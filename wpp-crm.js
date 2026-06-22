@@ -14,7 +14,7 @@ window.VeltrisWPP = (() => {
     activeCadenceId: null,
     agenda: [],
     leads: [],
-    stages: ['novo', 'contato', 'qualificado', 'proposta', 'negociacao', 'fechado'],
+    stages: ['agendado', 'realizado', 'cancelado'],
     metrics: null,
     connected: false,
     qrCode: null,
@@ -57,23 +57,17 @@ window.VeltrisWPP = (() => {
   }
   function stageColor(stage) {
     const colors = {
-      novo: '#6b7280',
-      contato: '#3b82f6',
-      qualificado: '#8b5cf6',
-      proposta: '#f59e0b',
-      negociacao: '#f97316',
-      fechado: '#22c55e',
+      agendado: '#3b82f6',
+      realizado: '#22c55e',
+      cancelado: '#ef4444',
     };
     return colors[stage] || '#6b7280';
   }
   function stageLabel(stage) {
     const labels = {
-      novo: 'Novo',
-      contato: 'Contato Feito',
-      qualificado: 'Qualificado',
-      proposta: 'Proposta',
-      negociacao: 'NegociaÃ§Ã£o',
-      fechado: 'Fechado',
+      agendado: 'Agendado',
+      realizado: 'Realizado',
+      cancelado: 'Cancelado',
     };
     return labels[stage] || stage;
   }
@@ -668,7 +662,7 @@ window.VeltrisWPP = (() => {
     const name = el('wcNewLeadName')?.value?.trim();
     const phone = el('wcNewLeadPhone')?.value?.trim();
     const email = el('wcNewLeadEmail')?.value?.trim();
-    const stage = el('wcNewLeadStage')?.value || 'novo';
+    const stage = el('wcNewLeadStage')?.value || 'agendado';
     if (!name) return;
     const res = await apiPost('contacts', { name, phone, email, stage, source: 'manual', score: 0 });
     if (res) {
