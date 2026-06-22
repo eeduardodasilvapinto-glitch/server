@@ -578,10 +578,16 @@ window.VeltrisWPP = (() => {
     container.innerHTML = `
       <div class="wc-lead-toolbar">
         <input id="wcLeadSearch" placeholder="Buscar cliente..." oninput="VeltrisWPP.filterLeads()" />
-        <select id="wcLeadStageFilter" onchange="VeltrisWPP.filterLeads()">
-          <option value="">Todos os estágios</option>
-          ${S.stages.map(s => `<option value="${s}">${stageLabel(s)}</option>`).join('')}
-        </select>
+        <div class="cs-wrap" style="position:relative;min-width:180px">
+          <div class="cs-trigger" id="wcStageTrigger" onclick="VeltrisWPP.toggleStageDropdown(event)">
+            <span id="wcStageSelected">Todos os estágios</span>
+            <span class="cs-arrow">▾</span>
+          </div>
+          <div class="cs-drop" id="wcStageDrop">
+            <div class="cs-opt" data-value="" onclick="VeltrisWPP.selectStage('')">Todos os estágios</div>
+            ${S.stages.map(s => `<div class="cs-opt" data-value="${s}" onclick="VeltrisWPP.selectStage('${s}')">${stageLabel(s)}</div>`).join('')}
+          </div>
+        </div>
         <button class="btn btn-save" onclick="VeltrisWPP.showAddLeadForm()" style="font-size:0.7rem">+ Novo Cliente</button>
       </div>
       <div id="wcAddLeadForm" style="display:none">
@@ -627,9 +633,35 @@ window.VeltrisWPP = (() => {
     `).join('');
   }
 
+  var _wcStageValue = '';
+
+  function toggleStageDropdown(e) {
+    if (e) e.stopPropagation();
+    var drop = el('wcStageDrop');
+    if (!drop) return;
+    drop.classList.toggle('visible');
+    if (drop.classList.contains('visible')) {
+      setTimeout(function () {
+        document.addEventListener('click', closeStageDropdown);
+      }, 10);
+    }
+  }
+  function closeStageDropdown() {
+    var drop = el('wcStageDrop');
+    if (drop) drop.classList.remove('visible');
+    document.removeEventListener('click', closeStageDropdown);
+  }
+  function selectStage(value) {
+    _wcStageValue = value;
+    var label = value ? stageLabel(value) : 'Todos os estágios';
+    el('wcStageSelected').textContent = label;
+    closeStageDropdown();
+    filterLeads();
+  }
+
   function filterLeads() {
     const search = (el('wcLeadSearch')?.value || '').toLowerCase();
-    const stage = el('wcLeadStageFilter')?.value || '';
+    const stage = _wcStageValue;
     const list = Array.isArray(S.leads) ? S.leads : [];
     const filtered = list.filter(l => {
       if (search && !(l.name || '').toLowerCase().includes(search) && !(l.phone || '').includes(search)) return false;
@@ -1071,6 +1103,8 @@ window.VeltrisWPP = (() => {
     addTag,
     saveNotes,
     generateAiInsight,
+    toggleStageDropdown,
+    selectStage,
     filterLeads,
     showAddLeadForm,
     hideAddLeadForm,
