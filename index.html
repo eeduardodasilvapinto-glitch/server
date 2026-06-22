@@ -439,7 +439,7 @@
             font-weight: 800;
             color: var(--secondary);
             text-align: center;
-            line-height: 1.2;
+            line-height: 1;
         }
 
         .impact-card .ic-desc {
@@ -8772,15 +8772,15 @@
 
                 if (score >= 70) {
                     document.getElementById('scoreImpact').style.color = '#4ade80';
-                    return '<span style="font-size: 1.25em;">●</span> Saudável';
+                    return '● Saudável';
                 }
                 if (score >= 40) {
                     document.getElementById('scoreImpact').style.color = '#facc15';
-                    return '<span style="font-size: 1.25em;">●</span> Regular';
+                    return '● Regular';
                 }
 
                 document.getElementById('scoreImpact').style.color = '#ef4444';
-                return '<span style="font-size: 1.25em;">●</span> Crítico';
+                return '● Crítico';
             }
 
             function scoreDesc(score) {
