@@ -1042,8 +1042,10 @@ window.VeltrisWPP = (() => {
     if (S.connected) {
       await loadChats();
     }
-    // Render the initial view
-    renderCurrentView();
+    // Render all views
+    renderWhatsapp();
+    renderClientes();
+    renderAgenda();
     // Periodic session refresh
     setInterval(async () => {
       if (!window.api || !api.isLoggedIn()) return;
