@@ -1038,10 +1038,8 @@ window.VeltrisWPP = (() => {
     if (S.connected) {
       await loadChats();
     }
-    // Render all views
+    // Render initial view
     renderWhatsapp();
-    renderClientes();
-    renderAgenda();
     // Periodic session refresh
     setInterval(async () => {
       if (!window.api || !api.isLoggedIn()) return;
@@ -1060,7 +1058,7 @@ window.VeltrisWPP = (() => {
         renderConnectionStatus();
       }
       S.sessions = sessions;
-  }, 15000);
+    }, 15000);
   }
 
   return {

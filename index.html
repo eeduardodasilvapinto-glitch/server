@@ -1552,9 +1552,12 @@
             display: flex;
         }
         .wpp-tab-content {
+            display: none;
+        }
+        .wpp-tab-content.active {
             display: block;
         }
-        #wppTabWhatsapp {
+        #wppTabWhatsapp.active {
             display: flex;
             flex-direction: column;
         }
@@ -7972,7 +7975,7 @@
                         </div>
 
                         <!-- Tab contents -->
-                        <div class="wpp-tab-content active" id="wppTabWhatsapp" style="flex:1">
+                        <div class="wpp-tab-content active" id="wppTabWhatsapp">
                             <div id="wppDashboard" style="flex-shrink:0"></div>
                             <div id="wppConnectionStatus" style="flex-shrink:0"></div>
                             <div id="wppConversas" style="flex:1;min-height:300px"></div>
