@@ -7037,11 +7037,6 @@
                                 <div class="ic-desc" id="finImpactDesc">Peso prioritário concluído</div>
                             </div>
                             <div class="impact-card">
-                                <div class="ic-header">⏱ Impacto Financeiro</div>
-                                <div class="ic-value" id="velImpact">0%</div>
-                                <div class="ic-desc" id="velImpactDesc">% ponderada — alto impacto pesa mais</div>
-                            </div>
-                            <div class="impact-card">
                                 <div class="ic-header"><i class="fi fi-rr-chart-histogram"></i> Score</div>
                                 <div class="ic-value" id="scoreImpact" style="font-size:2rem"><i class="fi fi-rr-chart-pie"></i></div>
                                 <div class="ic-desc" id="scoreImpactDesc">Saúde da empresa</div>
@@ -9340,7 +9335,6 @@
                 const total = totalItems();
                 const pct = overallPct();
                 const fin = calcImpactoFinanceiro();
-                const vel = calcVelocidadeFinanceira();
                 const score = calcScoreGeral();
 
                 document.getElementById('overallBar').style.width = pct + '%';
@@ -9349,8 +9343,6 @@
 
                 document.getElementById('finImpact').textContent = fin + '%';
                 document.getElementById('finImpactDesc').textContent = getImpactDesc(fin);
-                document.getElementById('velImpact').textContent = vel + '%';
-                document.getElementById('velImpactDesc').textContent = getVelDesc(vel);
                 document.getElementById('scoreImpact').innerHTML = scoreLabel(score);
                 document.getElementById('scoreImpactDesc').textContent = scoreDesc(score);
 
