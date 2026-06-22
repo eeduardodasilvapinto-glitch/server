@@ -2882,8 +2882,6 @@
             display: flex;
             flex-direction: column;
             background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 14px;
             overflow: hidden;
         }
 
@@ -5792,11 +5790,19 @@
             flex: 1;
             overflow: hidden;
             position: relative;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+        }
+        .chat-with-sidebar .chat-main {
+            border: none;
+            border-radius: 0;
+        }
+        .chat-with-sidebar .chat-sidebar {
+            border-right: 1px solid var(--border);
         }
 
         .chat-sidebar {
             width: 220px;
-            border-right: 1px solid var(--border);
             background: var(--surface);
             display: flex;
             flex-direction: column;
