@@ -15002,7 +15002,9 @@
                 renderIAHistory();
                 loadPopupConversations();
                 renderAnalysisHistory();
-                document.getElementById('kbText').value = loadKnowledgeBase();
+                reloadKnowledgeBase(function () {
+                    document.getElementById('kbText').value = loadKnowledgeBase();
+                });
 
                 // Generate initial suggestions if empty
                 setTimeout(function () {
@@ -15010,6 +15012,13 @@
                         gerarSugestoesIA();
                     }
                 }, 2000);
+
+                // Poll for real-time cross-user updates (every 20 seconds)
+                setInterval(function () {
+                    if (!api.isLoggedIn()) return;
+                    loadChecklistFromServer();
+                    loadKanban();
+                }, 20000);
             });
             // =====================================================================
             //  EMPRESAS
