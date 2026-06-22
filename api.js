@@ -75,12 +75,17 @@
       sessionStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
       sessionStorage.removeItem(USER_KEY);
-      // Close all overlays and show login
+      // Close all overlays except loginOverlay, then show login
       document.querySelectorAll('.modal-overlay.visible, .overlay.visible').forEach(function(el){ el.classList.remove('visible'); });
-      document.querySelectorAll('[id$="Overlay"]').forEach(function(el){ el.style.display = 'none'; });
+      document.querySelectorAll('[id$="Overlay"]').forEach(function(el){
+        if (el.id !== 'loginOverlay') el.style.display = 'none';
+      });
       document.getElementById('pwChangeOverlay').style.display = 'none';
       var overlay = document.getElementById('loginOverlay');
-      if (overlay) overlay.classList.remove('hidden');
+      if (overlay) {
+        overlay.style.display = '';
+        overlay.classList.remove('hidden');
+      }
     },
 
     getToken: function () { return this.token; },

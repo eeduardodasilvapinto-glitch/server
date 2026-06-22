@@ -132,6 +132,7 @@ window.VeltrisWPP = (() => {
 
   /* ============================ CONNECTION ============================ */
   async function loadSessions() {
+    if (!window.api || !api.isLoggedIn()) { S.sessions = []; return; }
     S.sessions = await apiGet('whatsapp_sessions', {});
     S.activeSessionId = S.sessions.find(s => s.status === 'connected')?.id || null;
     S.connected = !!S.activeSessionId;
@@ -1048,6 +1049,7 @@ window.VeltrisWPP = (() => {
 
   /* ============================ INIT ============================ */
   async function init() {
+    if (!window.api || !api.isLoggedIn()) return;
     initTabs();
     await loadSessions();
     if (S.connected) {
@@ -1057,6 +1059,7 @@ window.VeltrisWPP = (() => {
     renderCurrentView();
     // Periodic session refresh
     setInterval(async () => {
+      if (!window.api || !api.isLoggedIn()) return;
       const sessions = await apiGet('whatsapp_sessions', {});
       const connected = sessions.find(s => s.status === 'connected');
       if (connected && !S.connected) {
