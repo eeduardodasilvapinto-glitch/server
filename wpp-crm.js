@@ -578,7 +578,7 @@ window.VeltrisWPP = (() => {
     container.innerHTML = `
       <div class="wc-lead-toolbar">
         <input id="wcLeadSearch" placeholder="Buscar cliente..." oninput="VeltrisWPP.filterLeads()" />
-        <div class="cs-wrap" style="position:relative;min-width:180px">
+        <div class="cs-wrap" style="position:relative;min-width:140px">
           <div class="cs-trigger" id="wcStageTrigger" onclick="VeltrisWPP.toggleStageDropdown(event)">
             <span id="wcStageSelected">Todos os estágios</span>
             <span class="cs-arrow">▾</span>
