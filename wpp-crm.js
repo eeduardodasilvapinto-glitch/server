@@ -1033,7 +1033,6 @@ window.VeltrisWPP = (() => {
 
   /* ============================ INIT ============================ */
   async function init() {
-    if (!window.api || !api.isLoggedIn()) return;
     // Inject toolbar styles
     var style = document.createElement('style');
     style.textContent = '.wc-lead-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}.wc-lead-toolbar input,.wc-lead-toolbar select,.wc-lead-select{padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:0.82rem;outline:none;font-family:inherit;transition:border-color 0.2s}.wc-lead-toolbar input:focus,.wc-lead-toolbar select:focus,.wc-lead-select:focus{border-color:var(--accent)}.wc-lead-toolbar input{flex:1;min-width:160px}.wc-lead-toolbar select,.wc-lead-select{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;cursor:pointer}';
