@@ -415,7 +415,7 @@ window.VeltrisWPP = (() => {
         <div class="wc-panel-section">
           <h4>Funil</h4>
           <div style="display:flex;align-items:center;gap:8px">
-            <select id="wcContactStage" onchange="VeltrisWPP.updateContactStage(this.value)" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-size:0.78rem;outline:none;font-family:inherit">
+            <select id="wcContactStage" onchange="VeltrisWPP.updateContactStage(this.value)" class="wc-lead-select">
               ${S.stages.map(s => `<option value="${s}" ${contactData.stage === s ? 'selected' : ''}>${stageLabel(s)}</option>`).join('')}
             </select>
             <span style="font-size:0.65rem;color:var(--text-muted)">Score: ${contactData.score || 0}</span>
