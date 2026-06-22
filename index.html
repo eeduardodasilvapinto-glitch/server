@@ -392,60 +392,12 @@
             color: #fdba74;
         }
 
-        .c-fill-1 {
-            background: linear-gradient(90deg, hsl(var(--accent-h), var(--accent-s), 32%), hsl(var(--accent-h), var(--accent-s), 55%));
+        .c-fill {
+            background: linear-gradient(90deg, var(--accent), var(--accent-light));
         }
 
-        .c-fill-2 {
-            background: linear-gradient(90deg, hsl(var(--accent-h), var(--accent-s), 36%), hsl(var(--accent-h), var(--accent-s), 58%));
-        }
-
-        .c-fill-3 {
-            background: linear-gradient(90deg, hsl(var(--accent-h), var(--accent-s), 40%), hsl(var(--accent-h), var(--accent-s), 61%));
-        }
-
-        .c-fill-4 {
-            background: linear-gradient(90deg, hsl(var(--accent-h), var(--accent-s), 44%), hsl(var(--accent-h), var(--accent-s), 64%));
-        }
-
-        .c-fill-5 {
-            background: linear-gradient(90deg, hsl(var(--accent-h), var(--accent-s), 48%), hsl(var(--accent-h), var(--accent-s), 67%));
-        }
-
-        .c-fill-6 {
-            background: linear-gradient(90deg, hsl(var(--accent-h), var(--accent-s), 52%), hsl(var(--accent-h), var(--accent-s), 70%));
-        }
-
-        .c-fill-7 {
-            background: linear-gradient(90deg, hsl(var(--accent-h), var(--accent-s), 56%), hsl(var(--accent-h), var(--accent-s), 73%));
-        }
-
-        .c-pct-1 {
-            color: hsl(var(--accent-h), var(--accent-s), 55%);
-        }
-
-        .c-pct-2 {
-            color: hsl(var(--accent-h), var(--accent-s), 58%);
-        }
-
-        .c-pct-3 {
-            color: hsl(var(--accent-h), var(--accent-s), 61%);
-        }
-
-        .c-pct-4 {
-            color: hsl(var(--accent-h), var(--accent-s), 64%);
-        }
-
-        .c-pct-5 {
-            color: hsl(var(--accent-h), var(--accent-s), 67%);
-        }
-
-        .c-pct-6 {
-            color: hsl(var(--accent-h), var(--accent-s), 70%);
-        }
-
-        .c-pct-7 {
-            color: hsl(var(--accent-h), var(--accent-s), 73%);
+        .c-pct {
+            color: var(--accent);
         }
 
         /* ===== IMPACT METER ===== */
@@ -9440,18 +9392,16 @@
                     const p = catProgress(cat.id);
                     const list = itemsByCat(cat.id);
                     const done = list.filter(i => i.done).length;
-                    const fillClass = 'c-fill-' + (idx + 1);
-                    const pctClass = 'c-pct-' + (idx + 1);
 
                     return `
                     <div class="chart-row">
                         <div class="cat-label"><span class="cat-icon">${cat.icon}</span> ${cat.name}</div>
                         <div class="cat-bar-track">
-                            <div class="cat-bar-fill ${fillClass}" style="width:${p}%">
+                            <div class="cat-bar-fill c-fill" style="width:${p}%">
                                 ${p >= 15 ? `<span class="bar-count">${done}/${list.length}</span>` : ''}
                             </div>
                         </div>
-                        <div class="cat-pct ${pctClass}">${p}%</div>
+                        <div class="cat-pct c-pct">${p}%</div>
                     </div>
                 `;
                 }).join('');
@@ -9466,8 +9416,6 @@
                     if (!list.length) return '';
                     const done = list.filter(i => i.done).length;
                     const p = catProgress(cat.id);
-                    const fillIdx = categories.indexOf(cat) + 1;
-                    const fillClass = 'c-fill-' + fillIdx;
                     const pctColor = p >= 50 ? 'var(--accent-light)' : p >= 25 ? 'var(--accent)' : 'var(--text-muted)';
 
                     return `
@@ -9479,7 +9427,7 @@
                                 <div class="cat-meta">
                                     <span>${done}/${list.length} concluídos</span>
                                     <div class="cat-mini-bar">
-                                        <div class="cat-mini-fill ${fillClass}" style="width:${p}%"></div>
+                                        <div class="cat-mini-fill c-fill" style="width:${p}%"></div>
                                     </div>
                                 </div>
                             </div>
