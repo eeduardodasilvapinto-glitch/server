@@ -7568,7 +7568,7 @@
                             <input type="text" id="crmSearch" placeholder="Buscar lead..." oninput="crmFilterTimer()" />
                             <div style="position:relative">
                                 <div class="cs-trigger" id="crmStatusTrigger" onclick="toggleCrmStatusDropdown()"
-                                    style="padding:8px 12px;font-size:0.75rem;min-width:130px;background:var(--surface2);border-radius:8px">
+                                    style="min-width:140px">
                                     <span id="crmStatusSelected">Todos status</span>
                                     <span class="cs-arrow" id="crmStatusArrow">▾</span>
                                 </div>
@@ -7576,7 +7576,7 @@
                             </div>
                             <div style="position:relative">
                                 <div class="cs-trigger" id="crmSourceTrigger" onclick="toggleCrmSourceDropdown()"
-                                    style="padding:8px 12px;font-size:0.75rem;min-width:130px;background:var(--surface2);border-radius:8px">
+                                    style="min-width:140px">
                                     <span id="crmSourceSelected">Todas origens</span>
                                     <span class="cs-arrow" id="crmSourceArrow">▾</span>
                                 </div>
@@ -8147,7 +8147,7 @@
                         </div>
                         <div class="uf-group" style="position:relative">
                             <label>Status</label>
-                            <div class="cs-trigger" id="leadStatusTrigger" onclick="toggleLeadStatusDropdown()">
+                            <div class="cs-trigger" id="leadStatusTrigger" onclick="toggleLeadStatusDropdown()" style="width:100%">
                                 <span id="leadStatusSelected">Novo</span>
                                 <span class="cs-arrow" id="leadStatusArrow">▾</span>
                             </div>
@@ -8160,8 +8160,7 @@
                         <div class="uf-group" id="roletaAssignGroup" style="display:none">
                             <label>Atribuir a (roleta)</label>
                             <div style="position:relative">
-                                <div class="cs-trigger" id="roletaAssignTrigger" onclick="toggleRoletaAssignDropdown()"
-                                    style="padding:8px 12px;font-size:0.8rem;background:var(--surface2);border-radius:8px">
+                                <div class="cs-trigger" id="roletaAssignTrigger" onclick="toggleRoletaAssignDropdown()" style="width:100%">
                                     <span id="roletaAssignSelected">—</span>
                                     <span class="cs-arrow" id="roletaAssignArrow">▾</span>
                                 </div>
