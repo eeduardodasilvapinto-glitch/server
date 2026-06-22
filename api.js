@@ -500,13 +500,15 @@
 
     // ── Roleta ──
     _manageRoleta: async function (body) {
+      var h = {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+      };
+      var ct = this.token || (this._companyMemory && this._companyMemory.token) || localStorage.getItem(this.COMPANY_TOKEN_KEY) || sessionStorage.getItem(this.COMPANY_TOKEN_KEY);
+      if (ct) h['x-company-auth'] = ct;
       var res = await fetch(FUNCTIONS_URL + '/manage-leads', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + this.token,
-        },
+        headers: h,
         body: JSON.stringify(body),
       });
       if (res.status === 401) { this.logout(); throw new Error('Sessão expirada'); }
