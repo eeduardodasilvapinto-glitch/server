@@ -252,7 +252,7 @@
         headers: h,
         body: JSON.stringify(body),
       });
-      if (res.status === 401) { this.logout(); throw new Error('Sessão expirada'); }
+      if (res.status === 401) { throw new Error('Não autorizado'); }
       if (!res.ok) {
         var err = await res.json().catch(function () { return { error: 'Erro' }; });
         throw new Error(err.error || 'Erro ao gerenciar usuário');
