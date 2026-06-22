@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 32">
+  <g transform="translate(0, 0)">
+      <path d="M4 8 L14 26 L26 6" fill="none" stroke="url(#veltrisGrad)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M16 6 L26 6 L26 16" fill="none" stroke="url(#veltrisGrad)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="36" y="24" font-family="'Outfit', system-ui, sans-serif" font-weight="800" font-size="24" fill="currentColor" letter-spacing="0.5">Veltris</text>
+  <defs>
+    <linearGradient id="veltrisGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+  </defs>
+</svg>

@@ -1,0 +1,21 @@
+{
+  "name": "veltris-wpp-server",
+  "version": "1.0.0",
+  "description": "Veltris WhatsApp Baileys Backend - Conexao nao-oficial com WhatsApp via WebSocket",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.6.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "qrcode": "^1.5.4",
+    "pino": "^9.6.0",
+    "dotenv": "^16.4.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
