@@ -579,14 +579,8 @@ window.VeltrisWPP = (() => {
       <div class="wc-lead-toolbar">
         <input id="wcLeadSearch" placeholder="Buscar cliente..." oninput="VeltrisWPP.filterLeads()" />
         <select id="wcLeadStageFilter" onchange="VeltrisWPP.filterLeads()">
-          <option value="">Todos os estÃ¡gios</option>
+          <option value="">Todos os estágios</option>
           ${S.stages.map(s => `<option value="${s}">${stageLabel(s)}</option>`).join('')}
-        </select>
-        <select id="wcLeadSourceFilter" onchange="VeltrisWPP.filterLeads()">
-          <option value="">Todas origens</option>
-          <option value="whatsapp">WhatsApp</option>
-          <option value="manual">Manual</option>
-          <option value="form">FormulÃ¡rio</option>
         </select>
         <button class="btn btn-save" onclick="VeltrisWPP.showAddLeadForm()" style="font-size:0.7rem">+ Novo Cliente</button>
       </div>
@@ -608,11 +602,10 @@ window.VeltrisWPP = (() => {
             <tr>
               <th>Nome</th>
               <th>Telefone</th>
-              <th>EstÃ¡gio</th>
+              <th>Estágio</th>
               <th>Score</th>
-              <th>Origem</th>
-              <th>Ãšltimo Contato</th>
-              <th>AÃ§Ãµes</th>
+              <th>Último Contato</th>
+              <th>Ações</th>
             </tr>
           </thead>
           <tbody id="wcLeadsBody">${renderClientesRows(list)}</tbody>
@@ -621,15 +614,14 @@ window.VeltrisWPP = (() => {
   }
 
   function renderClientesRows(leads) {
-    if (leads.length === 0) return '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px">Nenhum cliente encontrado</td></tr>';
+    if (leads.length === 0) return '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:30px">Nenhum cliente encontrado</td></tr>';
     return leads.map(l => `
       <tr style="cursor:pointer" onclick="VeltrisWPP.selectLead('${l.id}')">
-        <td><strong>${escHtml(l.name || 'â€”')}</strong></td>
-        <td>${escHtml(l.phone || 'â€”')}</td>
+        <td><strong>${escHtml(l.name || '—')}</strong></td>
+        <td>${escHtml(l.phone || '—')}</td>
         <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${stageColor(l.stage)};margin-right:6px"></span>${stageLabel(l.stage)}</td>
         <td>${l.score || 0}</td>
-        <td>${l.source || 'â€”'}</td>
-        <td>${l.last_contacted_at ? formatFullDate(l.last_contacted_at) : 'â€”'}</td>
+        <td>${l.last_contacted_at ? formatFullDate(l.last_contacted_at) : '—'}</td>
         <td><button class="btn btn-outline" style="font-size:0.6rem;padding:2px 8px" onclick="event.stopPropagation();VeltrisWPP.openWhatsAppChat('${l.phone}')">WhatsApp</button></td>
       </tr>
     `).join('');
@@ -638,12 +630,10 @@ window.VeltrisWPP = (() => {
   function filterLeads() {
     const search = (el('wcLeadSearch')?.value || '').toLowerCase();
     const stage = el('wcLeadStageFilter')?.value || '';
-    const source = el('wcLeadSourceFilter')?.value || '';
     const list = Array.isArray(S.leads) ? S.leads : [];
     const filtered = list.filter(l => {
       if (search && !(l.name || '').toLowerCase().includes(search) && !(l.phone || '').includes(search)) return false;
       if (stage && l.stage !== stage) return false;
-      if (source && l.source !== source) return false;
       return true;
     });
     const tbody = el('wcLeadsBody');
@@ -1044,6 +1034,10 @@ window.VeltrisWPP = (() => {
   /* ============================ INIT ============================ */
   async function init() {
     if (!window.api || !api.isLoggedIn()) return;
+    // Inject toolbar styles
+    var style = document.createElement('style');
+    style.textContent = '.wc-lead-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}.wc-lead-toolbar input,.wc-lead-toolbar select{padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:0.82rem;outline:none;font-family:inherit;transition:border-color 0.2s}.wc-lead-toolbar input:focus,.wc-lead-toolbar select:focus{border-color:var(--accent)}.wc-lead-toolbar input{flex:1;min-width:160px}';
+    document.head.appendChild(style);
     initTabs();
     await loadSessions();
     if (S.connected) {
