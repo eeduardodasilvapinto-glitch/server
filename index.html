@@ -7409,7 +7409,7 @@
                     <div class="tab-content" id="tabIa">
                         <div class="chat-container">
                             <div class="chat-with-sidebar">
-                                <div class="chat-sidebar" id="iaChatSidebar">
+                                <div class="chat-sidebar collapsed" id="iaChatSidebar">
                                     <div class="chat-sidebar-header">
                                         <span><i class="fi fi-rr-clipboard-list"></i> Conversas</span>
                                         <button onclick="newIAConv()">+ Nova</button>
@@ -10429,7 +10429,7 @@
 
             var iaConversations = [];
             var activeIAConvId = null;
-            var iaHistoryVisible = true;
+            var iaHistoryVisible = false;
 
             function loadIAConversations() {
                 if (!api.isLoggedIn()) { iaConversations = [{ id: 'conv_' + Date.now(), title: 'Nova conversa', messages: [] }]; activeIAConvId = iaConversations[0].id; return; }
