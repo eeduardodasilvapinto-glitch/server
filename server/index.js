@@ -281,8 +281,8 @@ async function startSession(sessionId, userId, companyId) {
   })
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    logger.info({ sessionId, type, count: messages.length, firstId: messages[0]?.key?.id }, 'Messages upsert event')
-    if (type !== 'notify') return
+    logger.info({ sessionId, type, count: messages.length, firstId: messages[0]?.key?.id, hasMessage: !!messages[0]?.message }, 'Messages upsert')
+    if (type !== 'notify') { logger.info({ sessionId, type }, 'Skipping: not notify'); return }
     for (const msg of messages) {
       try {
         if (!msg.message) { logger.debug({ sessionId, id: msg.key?.id }, 'No message body'); continue }
