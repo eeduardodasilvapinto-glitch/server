@@ -443,19 +443,36 @@ const server = http.createServer(async (req, res) => {
     const cid = url.searchParams.get('chatId')
     if (!cid) { res.writeHead(400); res.end(JSON.stringify({ error: 'chatId required' })); return }
     let { data: messages } = await supabase.from('whatsapp_messages').select('*').eq('chat_id', cid).order('created_at', { ascending: false }).limit(500)
-    // If no messages found, try to find by phone (migrate from duplicate chats)
+    // If no messages found, try to find by phone (recover orphaned messages)
     if (!messages?.length) {
       const { data: chat } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', cid).limit(1)
       if (chat?.length) {
         const np = normalizePhone(chat[0].remote_jid?.split('@')[0] || '')
-        const { data: allChats } = await supabase.from('whatsapp_chats').select('id')
-        if (allChats) {
-          for (const ch of allChats) {
-            const p = normalizePhone(ch.remote_jid?.split('@')[0] || '')
-            if (p === np && ch.id !== cid) {
-              const { data } = await supabase.from('whatsapp_messages').select('*').eq('chat_id', ch.id).order('created_at', { ascending: false }).limit(500)
-              if (data?.length) { messages = data; await supabase.from('whatsapp_messages').update({ chat_id: cid }).eq('chat_id', ch.id); await supabase.from('whatsapp_chats').delete().eq('id', ch.id); break }
+        // Search messages by ALL chats with same phone, including orphaned
+        const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid')
+        const matchIds = []
+        if (allChats) { for (const ch of allChats) { if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np) matchIds.push(ch.id) } }
+        // Also search orphaned messages (no matching chat)
+        const { data: orphaned } = await supabase.from('whatsapp_messages').select('id,chat_id').limit(50000)
+        const validIds = new Set((allChats || []).map(ch => ch.id))
+        if (orphaned) {
+          for (const msg of orphaned) {
+            if (!validIds.has(msg.chat_id) && !matchIds.includes(msg.chat_id)) {
+              // This orphan belongs to this phone — migrate it
+              const { data: orphanChat } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', msg.chat_id).limit(1)
+              if (orphanChat?.length) {
+                const op = normalizePhone(orphanChat[0].remote_jid?.split('@')[0] || '')
+                if (op === np) matchIds.push(msg.chat_id)
+              }
             }
+          }
+        }
+        if (matchIds.length) {
+          const { data } = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).limit(500)
+          if (data?.length) {
+            messages = data
+            // Migrate all to the current chat_id
+            for (const mid of matchIds) { if (mid !== cid) await supabase.from('whatsapp_messages').update({ chat_id: cid }).eq('chat_id', mid) }
           }
         }
       }
@@ -496,7 +513,35 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, removed: toDelete.length })); return
   }
 
-  // /cleanup-chat-dups — dedup chats by phone, migrate messages first
+  // /recover-orphaned-messages — reassign messages whose chat was deleted
+  if (pathname === '/recover-orphaned-messages') {
+    const { data: allMsgs } = await supabase.from('whatsapp_messages').select('id,chat_id').limit(50000)
+    const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid')
+    const validIds = new Set((allChats || []).map(ch => ch.id))
+    const jidById = {}
+    if (allChats) for (const ch of allChats) jidById[ch.id] = ch.remote_jid
+    let recovered = 0
+    if (allMsgs) {
+      for (const msg of allMsgs) {
+        if (!validIds.has(msg.chat_id)) {
+          // Find the chat for this message by looking at chat->remote_jid->phone match
+          const oldJid = jidById[msg.chat_id]
+          if (oldJid) {
+            const np = normalizePhone(oldJid.split('@')[0] || '')
+            for (const ch of (allChats || [])) {
+              const cp = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+              if (cp === np) {
+                await supabase.from('whatsapp_messages').update({ chat_id: ch.id }).eq('id', msg.id)
+                recovered++
+                break
+              }
+            }
+          }
+        }
+      }
+    }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, recovered })); return
+  }
   if (pathname === '/cleanup-chat-dups') {
     const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid').order('created_at', { ascending: true })
     const seen = {}; let removed = 0
