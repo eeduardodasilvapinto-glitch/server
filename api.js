@@ -171,6 +171,7 @@
 
     _supaPost: async function (table, body) {
       var cid = this._getCompanyId();
+      if (this._isCompanyScoped(table) && !cid) return { data: [] };
       if (cid && this._isCompanyScoped(table)) {
         filters['company_id'] = cid;
       } else if (this._isCompanyScoped(table)) {
@@ -191,6 +192,7 @@
         filters[k] = val;
       }
       var cid = this._getCompanyId();
+      if (this._isCompanyScoped(table) && !cid) return;
       if (cid && this._isCompanyScoped(table)) {
         filters['company_id'] = cid;
       }
@@ -209,6 +211,7 @@
         filters[k] = val;
       }
       var cid = this._getCompanyId();
+      if (this._isCompanyScoped(table) && !cid) return;
       if (cid && this._isCompanyScoped(table)) {
         filters['company_id'] = cid;
       }
