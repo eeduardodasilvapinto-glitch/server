@@ -8988,7 +8988,10 @@
         </div>
 
         <script>
-            const STORAGE_KEY = 'orum_checklist_v2';
+            function getStorageKey() {
+                var cid = (typeof window._companyMode !== 'undefined' && window._companyMode) ? window._companyMode.id : 'default';
+                return 'orum_checklist_v2_' + cid;
+            }
 
             // =====================================================================
             //  MOTOR DE INTELIGÊNCIA — ANALISA IMPACTO FINANCEIRO REAL
@@ -9044,7 +9047,7 @@
 
             function loadItems() {
                 let stored;
-                try { stored = localStorage.getItem(STORAGE_KEY); } catch { }
+                try { stored = localStorage.getItem(getStorageKey()); } catch { }
                 if (stored) {
                     try {
                         const parsed = JSON.parse(stored);
@@ -9080,14 +9083,14 @@
                     var rows = res && res.data;
                     if (rows && rows.length && rows[0].data && Array.isArray(rows[0].data) && rows[0].data.length) {
                         items = rows[0].data;
-                        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch (e) { }
+                        try { localStorage.setItem(getStorageKey(), JSON.stringify(items)); } catch (e) { }
                     }
                     render();
                 }).catch(function () { render(); });
             }
 
             function save() {
-                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { }
+                try { localStorage.setItem(getStorageKey(), JSON.stringify(items)); } catch { }
                 if (!api.isLoggedIn()) return;
                 api.saveChecklist(items).catch(function () { });
             }
