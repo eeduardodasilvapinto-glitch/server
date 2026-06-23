@@ -202,13 +202,14 @@ window.VeltrisWPP = (() => {
             '<button class="btn btn-outline" onclick="VeltrisWPP.newSession()" style="font-size:0.75rem">Gerar Novo QR</button>' +
           '</div>';
       } else if (activeSession) {
+        var conectandoMsg = S._lastQr ? 'Conectando...' : 'Gerando QR Code...'
         container.innerHTML =
           '<div class="wpp-connect-card" style="flex-direction:column;align-items:center">' +
             '<div class="wpp-connect-status">' +
               '<span class="wpp-status-dot connecting"></span>' +
-              '<span style="font-size:0.82rem;color:var(--text);font-weight:600">Gerando QR Code...</span>' +
+              '<span style="font-size:0.82rem;color:var(--text);font-weight:600">' + conectandoMsg + '</span>' +
             '</div>' +
-            '<button class="btn btn-outline" onclick="VeltrisWPP.newSession()" style="font-size:0.75rem">Gerar Novo QR</button>' +
+            '<button class="btn btn-outline" onclick="VeltrisWPP.newSession()" style="font-size:0.75rem">' + (S._lastQr ? 'Cancelar' : 'Gerar Novo QR') + '</button>' +
           '</div>';
       } else {
         var serverHint = window._wppServerPoll ? '' : '<div style="font-size:0.65rem;color:var(--text-muted);margin-top:6px">Servidor local: http://localhost:3123</div>';
@@ -270,7 +271,6 @@ window.VeltrisWPP = (() => {
     window._wppServerPoll = setInterval(async function () {
       pollCount++
       try {
-        // Show QR code
         var qrResp = await fetch(_wppServerUrl + '/qr?sessionId=' + encodeURIComponent(sessionId))
         if (qrResp.ok) {
           var qrData = await qrResp.json()
@@ -278,6 +278,9 @@ window.VeltrisWPP = (() => {
             S._lastQr = qrData.qr_code
             qrShown = true
             S.sessions = [{ id: sessionId, qr_code: qrData.qr_code, status: 'connecting' }]
+            renderConnectionStatus()
+          } else if (!qrData.qr_code && qrShown) {
+            S.sessions = [{ id: sessionId, qr_code: null, status: 'connecting' }]
             renderConnectionStatus()
           }
         }
