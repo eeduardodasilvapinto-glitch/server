@@ -402,7 +402,7 @@ window.VeltrisWPP = (() => {
       renderConversasChatView();
       chatListEl = document.getElementById('wcChatList');
     }
-    if (chatListEl && !chatListEl.querySelector('.wc-chat-item')) chatListEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem">Carregando conversas...</div>';
+    if (chatListEl && !chatListEl.querySelector('.wc-chat-item')) chatListEl.innerHTML = '<div class="wc-loading-bar"><div class="wc-loading-bar-fill"></div></div><div class="wc-loading-text">Carregando conversas...</div>';
     loadLabels()
     // Also load chat-label associations
     if (S._serverSessionId && !S._chatLabels) {
