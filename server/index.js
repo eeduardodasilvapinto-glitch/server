@@ -358,9 +358,9 @@ async function startSession(sessionId, userId, companyId) {
             trimMessages(chatId)
           }
         }
-      } catch (e) {}
-    }
-  })
+      } catch (e) {
+        logger.error({ sessionId, error: e.message, stack: e.stack?.substring(0, 200) }, 'Msg processing error')
+      }
 }
 
 async function syncContacts(sessionId, companyId) {
