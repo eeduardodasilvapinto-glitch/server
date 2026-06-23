@@ -136,7 +136,9 @@ window.VeltrisWPP = (() => {
     if (!window.api || !api.isLoggedIn()) { S.sessions = []; return; }
     // Try to find active server session
     try {
-      var listResp = await fetch(_wppServerUrl + '/sessions')
+      var companyId = (typeof window._companyMode !== 'undefined' && window._companyMode) ? window._companyMode.id : null;
+      var sessUrl = _wppServerUrl + '/sessions' + (companyId ? '?company_id=' + encodeURIComponent(companyId) : '');
+      var listResp = await fetch(sessUrl)
       if (listResp.ok) {
         var listData = await listResp.json()
         var activeSrv = (listData.sessions || []).find(function(s) { return s.status === 'connected' }) || (listData.sessions || []).find(function(s) { return s.status !== 'disconnected' })
@@ -275,7 +277,9 @@ window.VeltrisWPP = (() => {
     if (typeof console !== 'undefined') console.log('newSession() called')
     var sessId = null
     try {
-      var resp = await fetch(_wppServerUrl + '/connect?user_id=' + encodeURIComponent(S.currentUser || ''))
+      var connCompanyId = (typeof window._companyMode !== 'undefined' && window._companyMode) ? window._companyMode.id : null;
+      var connUrl = _wppServerUrl + '/connect?user_id=' + encodeURIComponent(S.currentUser || '') + (connCompanyId ? '&company_id=' + encodeURIComponent(connCompanyId) : '');
+      var resp = await fetch(connUrl)
       if (resp.ok) {
         var data = await resp.json()
         sessId = data.sessionId
@@ -709,19 +713,19 @@ window.VeltrisWPP = (() => {
         sentOk = r.ok
       } catch (e) {}
     }
-    // After send, mark temp message as sent (remove "enviando...")
-    for (var i = 0; i < S.messages.length; i++) {
-      if (S.messages[i].id === tempId) {
-        S.messages[i].id = 'sent_' + Date.now()
-        renderMessages()
-        break
-      }
-    }
-    // Refresh from server in background (don't replace messages)
+    // After send, mark temp message as sent
     if (sentOk) {
+      for (var i = 0; i < S.messages.length; i++) {
+        if (S.messages[i].id === tempId) {
+          S.messages[i].id = 'sent_' + Date.now()
+          renderMessages()
+          break
+        }
+      }
+      // Load real messages from server to ensure they persist
       setTimeout(function() {
         loadMessages(S.activeChatId)
-      }, 2000)
+      }, 3000)
     }
   }
 
@@ -990,6 +994,7 @@ window.VeltrisWPP = (() => {
   }
 
   async function renderWhatsapp() {
+    await loadSessions();
     renderConnectionStatus();
     if (!S.connected) {
       const conv = el('wppConversas');
@@ -2519,6 +2524,7 @@ window.VeltrisWPP = (() => {
   async function init() {
     S.currentUser = getCurrentUserId();
     initTabs();
+    // Try to restore saved session first (persists across page reloads)
     var restored = await restoreWppSession();
     if (!restored) {
       await loadSessions();

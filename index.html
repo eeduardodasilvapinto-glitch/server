@@ -9726,6 +9726,7 @@
             // =====================================================================
 
             function render() {
+                try {
                 const done = totalDone();
                 const total = totalItems();
                 const pct = overallPct();
@@ -9745,6 +9746,7 @@
                 renderChart();
                 renderCategories();
                 renderModalSelects();
+                } catch (e) { console.warn('render error:', e); }
                 updateBulkUI();
                 renderFinanceCharts();
             }
@@ -11438,7 +11440,7 @@
                             // Create a minimal document entry via the edge function
                             var blob = new Blob([text], { type: 'text/plain' });
                             var file = new File([blob], 'knowledge_base.txt');
-                            api.uploadDocument(file, '__knowledge_base__', null, 'colaborador').catch(function () { });
+                            api.uploadDocument(file, '__knowledge_base__', null, 'user').catch(function () { });
                         }
                     });
                 }
@@ -11772,7 +11774,7 @@
             // =====================================================================
 
             var ROLES = [
-                { value: 'colaborador', label: 'Colaborador' },
+                { value: 'user', label: 'Colaborador' },
                 { value: 'gestor', label: 'Gestor' },
                 { value: 'admin', label: 'Admin' },
             ];
@@ -11780,7 +11782,7 @@
 
             function getRoleValue() {
                 var sel = document.querySelector('#roleDrop .cs-opt.selected');
-                return sel ? sel.dataset.value : 'colaborador';
+                return sel ? sel.dataset.value : 'user';
             }
             function setRoleValue(value) {
                 document.querySelectorAll('#roleDrop .cs-opt').forEach(function (o) { o.classList.remove('selected'); });
@@ -11799,7 +11801,7 @@
                 var current = document.getElementById('roleSelected').textContent;
                 var found = ROLES.find(function (r) { return r.label === current || r.value === current; });
                 if (found) setRoleValue(found.value);
-                else setRoleValue('colaborador');
+                else setRoleValue('user');
             }
 
             function toggleRoleDropdown() {
@@ -11829,7 +11831,7 @@
 
             // ── Doc Min Role Dropdown ──
             var DOC_MIN_ROLES = [
-                { value: 'colaborador', label: '<i class="fi fi-rr-user"></i> Todos (Colaborador+)' },
+                { value: 'user', label: '<i class="fi fi-rr-user"></i> Todos (Colaborador+)' },
                 { value: 'gestor', label: '<i class="fi fi-rr-circle" style="color:#f97316"></i> Gestor+' },
                 { value: 'admin', label: '<i class="fi fi-rr-circle" style="color:#ef4444"></i> Apenas Admin' },
             ];
@@ -11838,7 +11840,7 @@
 
             function getDocMinRoleValue() {
                 var sel = document.querySelector('#docMinRoleDrop .cs-opt.selected');
-                return sel ? sel.dataset.value : 'colaborador';
+                return sel ? sel.dataset.value : 'user';
             }
             function setDocMinRoleValue(value) {
                 document.querySelectorAll('#docMinRoleDrop .cs-opt').forEach(function (o) { o.classList.remove('selected'); });
@@ -11854,7 +11856,7 @@
                 drop.innerHTML = DOC_MIN_ROLES.map(function (r) {
                     return '<div class="cs-opt" data-value="' + r.value + '" onclick="selectDocMinRole(\'' + r.value + '\')">' + r.label + '</div>';
                 }).join('');
-                setDocMinRoleValue('colaborador');
+                setDocMinRoleValue('user');
             }
             function toggleDocMinRoleDropdown() {
                 docMinRoleOpen ? closeDocMinRoleDropdown() : openDocMinRoleDropdown();
@@ -11879,7 +11881,7 @@
 
             function getEditDocMinRoleValue() {
                 var sel = document.querySelector('#editDocMinRoleDrop .cs-opt.selected');
-                return sel ? sel.dataset.value : 'colaborador';
+                return sel ? sel.dataset.value : 'user';
             }
             function setEditDocMinRoleValue(value) {
                 document.querySelectorAll('#editDocMinRoleDrop .cs-opt').forEach(function (o) { o.classList.remove('selected'); });
@@ -11895,7 +11897,7 @@
                 drop.innerHTML = DOC_MIN_ROLES.map(function (r) {
                     return '<div class="cs-opt" data-value="' + r.value + '" onclick="selectEditDocMinRole(\'' + r.value + '\')">' + r.label + '</div>';
                 }).join('');
-                setEditDocMinRoleValue('colaborador');
+                setEditDocMinRoleValue('user');
             }
             function toggleEditDocMinRoleDropdown() {
                 editDocMinRoleOpen ? closeEditDocMinRoleDropdown() : openEditDocMinRoleDropdown();
@@ -12068,18 +12070,18 @@
                     var currentUser = api.getUser();
                     var sess = api.companyGetSession && api.companyGetSession();
                     if (!currentUser && sess && sess.user) currentUser = sess.user;
-                    var currentRole = currentUser ? (currentUser.role || 'colaborador') : 'colaborador';
+                    var currentRole = currentUser ? (currentUser.role || 'user') : 'user';
                     var tbody = document.getElementById('usersTableBody');
                     tbody.innerHTML = '';
                     (users || []).forEach(function (u) {
                         var sectors = u.sectors || [];
                         if (typeof sectors === 'string') { try { sectors = JSON.parse(sectors); } catch (e) { sectors = []; } }
                         var sectorTags = (Array.isArray(sectors) ? sectors : []).map(function (s) { return '<span class="sector-tag">' + escapeHtml(s) + '</span>'; }).join('');
-                        var roleClass = u.role || 'colaborador';
+                        var roleClass = u.role || 'user';
                         var roleLabel = { admin: 'Admin', gestor: 'Gestor', colaborador: 'Colaborador' }[roleClass] || roleClass;
                         var canDelete = false;
                         if (currentRole === 'admin') canDelete = true;
-                        else if (currentRole === 'gestor') canDelete = (roleClass === 'colaborador');
+                        else if (currentRole === 'gestor') canDelete = (roleClass === 'user');
                         var row = document.createElement('tr');
                         row.innerHTML = '<td><strong>' + escapeHtml(u.name) + '</strong></td>' +
                             '<td><span class="role-badge ' + roleClass + '">' + roleLabel + '</span></td>' +
@@ -12135,7 +12137,7 @@
                     if (!user) return;
                     document.getElementById('ufName').value = user.name;
                     document.getElementById('ufPass').value = '';
-                    setRoleValue(user.role || 'colaborador');
+                    setRoleValue(user.role || 'user');
                     var sectors = user.sectors || [];
                     if (typeof sectors === 'string') { try { sectors = JSON.parse(sectors); } catch (e) { sectors = []; } }
                     setSectors(Array.isArray(sectors) ? sectors : []);
@@ -12148,20 +12150,20 @@
                 var currentUser = api.getUser();
                 var sess = api.companyGetSession && api.companyGetSession();
                 if (!currentUser && sess && sess.user) currentUser = sess.user;
-                var currentRole = currentUser ? (currentUser.role || 'colaborador') : 'colaborador';
-                if (currentRole === 'colaborador') { showUserStatus('Você não tem permissão para excluir usuários.', 'err'); return; }
+                var currentRole = currentUser ? (currentUser.role || 'user') : 'user';
+                if (currentRole === 'user') { showUserStatus('Você não tem permissão para excluir usuários.', 'err'); return; }
                 if (currentRole === 'gestor') {
                     var userToDelete = (api._usersCache || []).find(function (u) { return u.id === id; });
                     if (!userToDelete) {
                         api.listUsers().then(function (users) {
                             api._usersCache = users || [];
                             var target = (users || []).find(function (u) { return u.id === id; });
-                            if (target && target.role !== 'colaborador') { showUserStatus('Gestor só pode excluir colaboradores.', 'err'); return; }
+                            if (target && target.role !== 'user') { showUserStatus('Gestor só pode excluir colaboradores.', 'err'); return; }
                             proceedDeleteUser(id);
                         });
                         return;
                     }
-                    if (userToDelete.role !== 'colaborador') { showUserStatus('Gestor só pode excluir colaboradores.', 'err'); return; }
+                    if (userToDelete.role !== 'user') { showUserStatus('Gestor só pode excluir colaboradores.', 'err'); return; }
                 }
                 proceedDeleteUser(id);
             }
@@ -12180,7 +12182,7 @@
                 document.getElementById('userSaveBtn').textContent = 'Adicionar';
                 document.getElementById('ufName').value = '';
                 document.getElementById('ufPass').value = '';
-                setRoleValue('colaborador');
+                setRoleValue('user');
                 clearSectors();
             }
 
@@ -12489,7 +12491,7 @@
                 initEditDocSectorDropdown();
                 setEditDocSectorValue(sector || '');
                 initEditDocMinRoleDropdown();
-                setEditDocMinRoleValue(minRole || 'colaborador');
+                setEditDocMinRoleValue(minRole || 'user');
                 document.getElementById('editDocOverlay').classList.add('visible');
             }
 
@@ -15839,7 +15841,7 @@
                 api.companyListUsers(_companyMode.id).then(function (users) {
                     _companyUsersCache = users || [];
                     el.innerHTML = (users || []).map(function (u) {
-                        var roleLabel = u.role || 'colaborador';
+                        var roleLabel = u.role || 'user';
                         var roleBadgeClass = 'role-badge.' + roleLabel;
                         if (roleLabel === 'admin') roleBadgeClass = 'role-badge.admin';
                         else if (roleLabel === 'gestor') roleBadgeClass = 'role-badge.gestor';
@@ -15999,7 +16001,7 @@
                 document.getElementById('usrRoleDrop').classList.remove('visible');
                 document.getElementById('usrRoleTrigger').classList.remove('open');
                 document.getElementById('usrRoleArrow').classList.remove('open');
-                var roleVal = usr ? (usr.role || 'colaborador') : 'colaborador';
+                var roleVal = usr ? (usr.role || 'user') : 'user';
                 selectUsrRole(roleVal);
                 _usrSectorOpen = false;
                 document.getElementById('usrSectorDrop').classList.remove('visible');
@@ -16100,6 +16102,7 @@
                 var isGlobalAdmin = (companyName.toLowerCase() === 'admin');
 
                 api.companyLogin(companyName, adminName, pass).then(function (result) {
+                    if (!result || !result.company) { err.textContent = 'Resposta inválida do servidor'; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Entrar'; return; }
                     var userPerms = (result.user && result.user.permissions) || null;
                     if (isGlobalAdmin) {
                         _companyMode = {
