@@ -292,7 +292,7 @@ window.VeltrisWPP = (() => {
     if (sessId) {
       S._serverSessionId = sessId; S.activeSessionId = sessId
       S.sessions = [{ id: sessId, status: 'connecting' }]
-      saveWppSession(sessId)
+      // Don't save to localStorage until connected (avoid overwriting an active session)
       renderConnectionStatus()
       startWppServerPoll(sessId)
       if (typeof showToast !== 'undefined') showToast('Conectando WhatsApp...')
