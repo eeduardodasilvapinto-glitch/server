@@ -655,6 +655,22 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (pathname === '/labels') {
+    const sid = url.searchParams.get('sessionId')
+    const entry = sid ? sessions.get(sid) : null
+    const labels = entry?.labels ? Object.values(entry.labels) : []
+    res.writeHead(200); res.end(JSON.stringify({ labels })); return
+  }
+
+  if (pathname === '/chat-labels') {
+    const sid = url.searchParams.get('sessionId')
+    const cid = url.searchParams.get('chatId') || ''
+    const entry = sid ? sessions.get(sid) : null
+    const labelIds = entry?.chatLabels?.[cid] || []
+    const resolved = labelIds.map(lid => { const lb = entry?.labels?.[lid]; return lb ? { id: lid, name: lb.name, color: lb.hexColor } : null }).filter(Boolean)
+    res.writeHead(200); res.end(JSON.stringify({ labels: resolved })); return
+  }
+
   if (pathname === '/send-message' && req.method === 'POST') {
     let body = ''
     req.on('data', chunk => body += chunk)
