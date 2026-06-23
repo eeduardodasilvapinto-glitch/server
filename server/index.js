@@ -112,6 +112,33 @@ async function startSession(sessionId, userId, companyId) {
 
   entry.sock = sock
 
+  function startOutgoingPump() {
+    if (entry.outgoingInterval) clearInterval(entry.outgoingInterval)
+    entry.outgoingInterval = setInterval(async () => {
+      if (!entry.sock) return
+      try {
+        const { data: pending } = await supabase.from('whatsapp_messages').select('id,chat_id,text')
+          .eq('session_id', sessionId).eq('direction', 'sent')
+          .gte('created_at', new Date(Date.now() - 30000).toISOString()).order('created_at', { ascending: true }).limit(20)
+        if (!pending?.length) return
+        for (const msg of pending) {
+          const { data: chats } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', msg.chat_id).limit(1)
+          const jid = chats?.[0]?.remote_jid
+          if (!jid) continue
+          await entry.sock.sendMessage(jid, { text: msg.text })
+          await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id)
+          logger.info({ sessionId, jid, msgId: msg.id }, 'Message sent')
+        }
+      } catch (e) {
+        if (e.message?.includes('Connection closed')) { entry.sock = null; stopOutgoingPump() }
+      }
+    }, 3000)
+  }
+
+  function stopOutgoingPump() {
+    if (entry.outgoingInterval) { clearInterval(entry.outgoingInterval); entry.outgoingInterval = null }
+  }
+
   sock.ev.on('creds.update', async () => {
     await saveCreds()
     try {
@@ -138,6 +165,7 @@ async function startSession(sessionId, userId, companyId) {
       const rawId = sock.user?.id || ''
       const phone = rawId.split(':')[0] || ''
       entry.phone = phone
+      startOutgoingPump()
       await supabase.from('whatsapp_sessions').update({ status: 'connected', phone, qr_code: null }).eq('id', sessionId)
       setTimeout(() => syncContacts(sessionId, companyId), 5000)
       setTimeout(() => syncChatsFromStore(sessionId, companyId), 10000)
@@ -146,7 +174,7 @@ async function startSession(sessionId, userId, companyId) {
       const statusCode = lastDisconnect?.error?.output?.statusCode
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut
       entry.status = shouldReconnect ? 'connecting' : 'disconnected'
-      entry.qrCode = null; entry.sock = null
+      entry.qrCode = null; entry.sock = null; stopOutgoingPump()
       await supabase.from('whatsapp_sessions').update({ status: entry.status }).eq('id', sessionId)
       if (shouldReconnect) {
         entry.reconnectTimeout = setTimeout(() => startSession(sessionId, userId, companyId), 5000)
