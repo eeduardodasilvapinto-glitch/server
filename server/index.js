@@ -10,6 +10,7 @@ import pino from 'pino'
 import fs from 'fs'
 import path from 'path'
 import http from 'http'
+import WebSocket from 'ws'
 import 'dotenv/config'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
@@ -19,7 +20,7 @@ const MEDIA_DIR = process.env.WPP_MEDIA_DIR || './media'
 const HTTP_PORT = process.env.PORT || process.env.WPP_HTTP_PORT || 3123
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } })
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false }, transport: WebSocket })
 
 if (!fs.existsSync(AUTH_BASE)) fs.mkdirSync(AUTH_BASE, { recursive: true })
 if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true })
