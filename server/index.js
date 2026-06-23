@@ -74,8 +74,10 @@ async function getCompanyId(sid) {
   try {
     const { data } = await supabase.from('whatsapp_sessions').select('company_id').eq('id', sid).limit(1)
     if (data?.[0]?.company_id) return data[0].company_id
+    // If session has no company_id, return a sentinel to block queries
+    return 'NO_COMPANY'
   } catch (e) {}
-  return null
+  return 'NO_COMPANY'
 }
 async function trimMessages(chatId, max = 200) {
   try {
