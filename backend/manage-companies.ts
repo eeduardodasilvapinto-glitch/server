@@ -62,7 +62,7 @@ serve(async (req) => {
 
         const { data: company, error: compErr } = await supabase
           .from("companies")
-          .insert({ name: companyName, permissions: {} })
+          .insert({ name: companyName, permissions: {}, active: true })
           .select()
           .single();
         if (compErr) return json({ error: compErr.message }, 500);
@@ -75,6 +75,7 @@ serve(async (req) => {
             name: adminName,
             password: hashedPw,
             role: "admin",
+            active: true,
           })
           .select()
           .single();
