@@ -463,13 +463,13 @@ const server = http.createServer(async (req, res) => {
     const reqCompanyId = url.searchParams.get('company_id') || null
     for (const [id, entry] of sessions) {
       if (reqCompanyId && entry.companyId && String(entry.companyId) !== reqCompanyId) continue
-      active.push({ sessionId: id, status: entry.status, phone: entry.phone, hasQr: !!entry.qrCode })
+      active.push({ sessionId: id, status: entry.status, phone: entry.phone, hasQr: !!entry.qrCode, companyId: entry.companyId })
     }
     if (!active.length) {
-      let query = supabase.from('whatsapp_sessions').select('id,status,phone')
+      let query = supabase.from('whatsapp_sessions').select('id,status,phone,company_id')
       if (reqCompanyId) query = query.eq('company_id', reqCompanyId)
       const { data: dbS } = await query.limit(10)
-      if (dbS) for (const s of dbS) active.push({ sessionId: s.id, status: s.status === 'connected' ? 'connecting' : s.status, phone: s.phone })
+      if (dbS) for (const s of dbS) active.push({ sessionId: s.id, status: s.status === 'connected' ? 'connecting' : s.status, phone: s.phone, companyId: s.company_id })
     }
     res.writeHead(200); res.end(JSON.stringify({ sessions: active })); return
   }

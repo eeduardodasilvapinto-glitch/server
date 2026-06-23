@@ -141,7 +141,8 @@ window.VeltrisWPP = (() => {
       var listResp = await fetch(sessUrl)
       if (listResp.ok) {
         var listData = await listResp.json()
-        var activeSrv = (listData.sessions || []).find(function(s) { return s.status === 'connected' }) || (listData.sessions || []).find(function(s) { return s.status !== 'disconnected' })
+        var filteredSessions = (listData.sessions || []).filter(function(s) { return !companyId || !s.companyId || String(s.companyId) === String(companyId) })
+        var activeSrv = filteredSessions.find(function(s) { return s.status === 'connected' }) || filteredSessions.find(function(s) { return s.status !== 'disconnected' })
         if (activeSrv) {
           S._serverSessionId = activeSrv.sessionId
           S.activeSessionId = activeSrv.sessionId
