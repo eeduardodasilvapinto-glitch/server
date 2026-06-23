@@ -16129,7 +16129,7 @@
                     try { renderFinanceCharts(); } catch (e) { }
                     btn.disabled = false; btn.textContent = 'Entrar';
                 }).catch(function (e) {
-                    err.textContent = 'Credenciais invalidas. Tente novamente.'; err.style.display = 'block';
+                    err.textContent = e.message || 'Erro desconhecido'; err.style.display = 'block';
                     btn.disabled = false; btn.textContent = 'Entrar';
                 });
             }
