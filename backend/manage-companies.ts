@@ -239,6 +239,7 @@ serve(async (req) => {
             name,
             password: hashedPw,
             role: role || "user",
+            active: true,
           })
           .select()
           .single();
