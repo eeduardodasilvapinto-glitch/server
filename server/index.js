@@ -512,6 +512,23 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ chats: cData?.length || 0, messages: mData?.length || 0 })); return
   }
 
+  if (pathname === '/debug-contact') {
+    const q = url.searchParams.get('phone') || ''
+    const np = normalizePhone(q)
+    const contact = await findContactByPhone(q, null)
+    const { data: chats } = await supabase.from('whatsapp_chats').select('*')
+    const matchChats = (chats || []).filter(ch => normalizePhone(ch.remote_jid?.split('@')[0] || '') === np)
+    const chatIds = matchChats.map(ch => ch.id)
+    const { data: msgs } = chatIds.length ? await supabase.from('whatsapp_messages').select('*').in('chat_id', chatIds).order('created_at', { ascending: false }).limit(100) : { data: [] }
+    res.writeHead(200); res.end(JSON.stringify({
+      phone_original: q, phone_normalized: np,
+      contact: contact || null,
+      chats: matchChats.map(ch => ({ id: ch.id, remote_jid: ch.remote_jid, contact_name: ch.contact_name, last_message_at: ch.last_message_at })),
+      messages_count: msgs?.length || 0,
+      messages_sample: msgs?.slice(0, 5) || [],
+    })); return
+  }
+
   if (pathname.startsWith('/media/')) {
     const filePath = path.join(MEDIA_DIR, pathname.replace('/media/', '').replace(/[^a-zA-Z0-9\-_\.]/g, ''))
     if (fs.existsSync(filePath)) {
