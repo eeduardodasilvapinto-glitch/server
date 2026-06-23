@@ -16029,37 +16029,40 @@
             function usrCloseForm() { document.getElementById('usrFormOverlay').style.display = 'none'; }
 
             function usrSave() {
-                var overlay = document.getElementById('usrFormOverlay');
-                var name = document.getElementById('usrFormName').value.trim();
-                if (!name) { showToast('Informe o nome do usuário'); return; }
-                var editId = overlay.dataset.editId;
-                var pass = document.getElementById('usrFormPass').value.trim();
-                if (!editId && !pass) { showToast('Informe uma senha'); return; }
-                var active = document.getElementById('usrFormActive').checked;
-                var role = document.getElementById('usrFormRole').value;
-                var sector = document.getElementById('usrFormSector').value.trim();
-                var perms = {};
-                document.querySelectorAll('#usrFormPerms input[type="checkbox"]').forEach(function (cb) {
-                    var perm = cb.dataset.perm, type = cb.dataset.type;
-                    if (!perms[perm]) perms[perm] = {};
-                    perms[perm][type] = cb.checked;
-                });
-
-                var promise;
-                if (editId) {
-                    var data = { name: name, active: active, role: role, sector: sector, permissions: perms };
-                    if (pass) data.password = pass;
-                    promise = api.companyUpdateUser(editId, data);
-                } else {
-                    promise = api.companyCreateUser(_companyMode.id, name, pass, role, sector, perms);
+                try {
+                    var overlay = document.getElementById('usrFormOverlay');
+                    var name = document.getElementById('usrFormName').value.trim();
+                    if (!name) { showToast('Informe o nome do usuário'); return; }
+                    var editId = overlay.dataset.editId;
+                    var pass = document.getElementById('usrFormPass').value.trim();
+                    if (!editId && !pass) { showToast('Informe uma senha'); return; }
+                    var role = document.getElementById('usrFormRole').value;
+                    var sector = document.getElementById('usrFormSector').value.trim();
+                    var perms = {};
+                    document.querySelectorAll('#usrFormPerms input[type="checkbox"]').forEach(function (cb) {
+                        var perm = cb.dataset.perm, type = cb.dataset.type;
+                        if (!perms[perm]) perms[perm] = {};
+                        perms[perm][type] = cb.checked;
+                    });
+                    if (!_companyMode) { showToast('Erro: sessão de empresa não encontrada'); return; }
+                    var promise;
+                    if (editId) {
+                        var data = { name: name, role: role, sector: sector, permissions: perms };
+                        if (pass) data.password = pass;
+                        promise = api.companyUpdateUser(editId, data);
+                    } else {
+                        promise = api.companyCreateUser(_companyMode.id, name, pass, role, sector, perms);
+                    }
+                    promise.then(function () {
+                        usrCloseForm();
+                        usrRender();
+                        showToast('Usuário salvo!');
+                    }).catch(function (e) {
+                        showToast('Erro: ' + (e.message || 'Falha na requisição'));
+                    });
+                } catch (e) {
+                    showToast('Erro: ' + (e.message || 'Erro desconhecido'));
                 }
-    promise.then(function () {
-        usrCloseForm();
-        usrRender();
-        showToast('Usuário salvo!');
-    }).catch(function (e) {
-        showToast('Erro: ' + (e.message || 'opera��o falhou'));
-    });
             }
 
             function usrDelete(id) {
