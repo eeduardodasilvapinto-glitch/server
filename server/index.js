@@ -107,7 +107,7 @@ async function startSession(sessionId, userId, companyId) {
     version, auth: state, printQRInTerminal: false,
     browser: ['Veltris CRM', 'Chrome', '1.0.0'],
     logger: pino({ level: 'silent' }),
-    markOnlineOnConnect: false, syncFullHistory: false,
+    markOnlineOnConnect: false, syncFullHistory: true,
   })
 
   entry.sock = sock
@@ -155,6 +155,74 @@ async function startSession(sessionId, userId, companyId) {
         sessions.delete(sessionId)
       }
     }
+  })
+
+  sock.ev.on('messaging-history.set', async ({ chats, contacts: historyContacts, messages }) => {
+    logger.info({ sessionId, chats: chats?.length, contacts: historyContacts?.length, messages: messages?.length }, 'History sync')
+    if (!chats?.length && !historyContacts?.length && !messages?.length) return
+    // Build contact name map
+    const nameMap = {}
+    if (historyContacts) {
+      for (const c of historyContacts) {
+        const jid = c.id
+        if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter')) continue
+        const cName = typeof c.name === 'string' ? c.name : (typeof c.notify === 'string' ? c.notify : (typeof c.verifiedName === 'string' ? c.verifiedName : ''))
+        if (cName) nameMap[jid] = cName
+      }
+    }
+    // Process chats
+    if (chats) {
+      for (const chat of chats) {
+        const jid = chat.id
+        if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter') || jid === 'status@broadcast') continue
+        const phone = jid.split('@')[0]
+        if (normalizePhone(phone).length >= 14) continue
+        const contactName = nameMap[jid] || (typeof chat.name === 'string' ? chat.name : (typeof chat.notify === 'string' ? chat.notify : null)) || phone
+        // Upsert contact
+        let contactId = null
+        const existingContact = await findContactByPhone(phone, companyId)
+        if (existingContact) { contactId = existingContact.id }
+        else {
+          const p = { name: contactName, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }
+          if (companyId) p.company_id = companyId
+          const { data: newC } = await supabase.from('contacts').insert(p).select().single()
+          if (newC) contactId = newC.id
+        }
+        // Upsert chat
+        const existingChat = await findChat(jid, sessionId)
+        if (!existingChat) {
+          await supabase.from('whatsapp_chats').insert({
+            remote_jid: jid, contact_id: contactId, contact_name: contactName,
+            last_message_at: chat.conversationTimestamp ? new Date(chat.conversationTimestamp * 1000).toISOString() : null,
+            session_id: sessionId
+          })
+        }
+      }
+    }
+    // Process messages in batches
+    if (messages) {
+      const batchSize = 100
+      for (let i = 0; i < messages.length; i += batchSize) {
+        const batch = messages.slice(i, i + batchSize)
+        const inserts = []
+        for (const msg of batch) {
+          const jid = msg.key?.remoteJid
+          if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter')) continue
+          const phone = jid.split('@')[0]
+          if (normalizePhone(phone).length >= 14) continue
+          const existingChat = await findChat(jid, sessionId)
+          if (!existingChat) continue
+          const msgContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || msg.message?.videoMessage?.caption || ''
+          if (!msgContent) continue
+          const msgTs = msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString()
+          inserts.push({ chat_id: existingChat.id, session_id: sessionId, text: msgContent.substring(0, 500), direction: msg.key.fromMe ? 'sent' : 'received', created_at: msgTs })
+        }
+        if (inserts.length) {
+          await supabase.from('whatsapp_messages').insert(inserts)
+        }
+      }
+    }
+    logger.info({ sessionId }, 'History sync completed')
   })
 
   sock.ev.on('contacts.upsert', async (contacts) => {
