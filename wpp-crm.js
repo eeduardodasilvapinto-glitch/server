@@ -212,7 +212,7 @@ window.VeltrisWPP = (() => {
             '<button class="btn btn-outline" onclick="VeltrisWPP.newSession()" style="font-size:0.75rem">' + (S._lastQr ? 'Cancelar' : 'Gerar Novo QR') + '</button>' +
           '</div>';
       } else {
-        var serverHint = window._wppServerPoll ? '' : '<div style="font-size:0.65rem;color:var(--text-muted);margin-top:6px">Servidor local: http://localhost:3123</div>';
+        var serverHint = window._wppServerPoll ? '' : '<div style="font-size:0.65rem;color:var(--text-muted);margin-top:6px">Servidor: ' + _wppServerUrl + '</div>';
         container.innerHTML =
           '<div class="wpp-connect-card">' +
             '<div class="wpp-connect-status">' +
@@ -531,9 +531,13 @@ window.VeltrisWPP = (() => {
   async function selectChat(chatId) {
     S.activeChatId = chatId;
     S.messages = [];
+    _chatShowing = true;
+    var listView = el('wcChatListView');
+    var chatView = el('wcChatView');
+    if (listView) listView.style.display = 'none';
+    if (chatView) chatView.style.display = 'flex';
     renderChatList();
     renderMessages();
-    renderContactPanel();
     await loadMessages(chatId);
     // Mark as read
     if (S.chats.find(c => c.id === chatId && c.unread_count > 0)) {
@@ -576,14 +580,11 @@ window.VeltrisWPP = (() => {
 
   function renderMessages() {
     const container = el('wcMessages');
-    const header = el('wcWindowHeader');
     const inputArea = el('wcInputArea');
     if (!container) { console.warn('renderMessages: container not found'); return; }
-    if (S.messages.length) console.log('renderMessages: rendering', S.messages.length, 'msgs');
     if (!S.activeChatId) {
       container.style.display = 'flex';
       container.innerHTML = '<div style="margin:auto;text-align:center;color:var(--text-muted);font-size:0.85rem">Selecione uma conversa</div>';
-      if (header) header.innerHTML = '';
       if (inputArea) inputArea.style.display = 'none';
       return;
     }
@@ -591,18 +592,20 @@ window.VeltrisWPP = (() => {
     const chat = S.chats.find(c => c.id === S.activeChatId);
     const contact = chat ? (S.contacts[chat.contact_id] || {}) : {};
     const name = contact?.name || chat?.contact_name || chat?.remote_jid || 'Desconhecido';
-    if (header) {
-      header.innerHTML = `
-        <div class="wc-avatar">${initials(name)}</div>
-        <div class="wc-info">
-          <div class="name">${escHtml(name)}</div>
-          <div class="status">${contact?.stage ? stageLabel(contact.stage) : 'lead'}</div>
-        </div>
-        <button class="wc-ai-btn" onclick="window.VeltrisWPP.analyzeConversation()" title="Analisar conversa com IA"
-          style="margin-left:auto;background:var(--accent);border:none;border-radius:8px;padding:6px 10px;color:#fff;font-size:0.7rem;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0;font-family:inherit">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4c0 2-2 3-4 5-2-2-4-3-4-5a4 4 0 0 1 4-4z"/><path d="M12 11v8"/><path d="M8 22h8"/><path d="M10 22v-3"/><path d="M14 22v-3"/><circle cx="12" cy="6" r="1"/></svg>
-          Analisar
-        </button>`;
+    var avatarEl = el('wcChatAvatar');
+    var nameEl = el('wcChatName');
+    var statusEl = el('wcChatStatus');
+    if (avatarEl) avatarEl.textContent = initials(name);
+    if (nameEl) nameEl.textContent = name;
+    if (statusEl) statusEl.textContent = contact?.stage ? stageLabel(contact.stage) : 'lead';
+    var header = el('wcWindowHeader');
+    if (header && !header.querySelector('.wc-ai-btn')) {
+      var aiBtn = document.createElement('button');
+      aiBtn.className = 'wc-ai-btn';
+      aiBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4c0 2-2 3-4 5-2-2-4-3-4-5a4 4 0 0 1 4-4z"/><path d="M12 11v8"/><path d="M8 22h8"/><path d="M10 22v-3"/><path d="M14 22v-3"/><circle cx="12" cy="6" r="1"/></svg> Analisar';
+      aiBtn.onclick = function() { if (window.VeltrisWPP.analyzeConversation) window.VeltrisWPP.analyzeConversation(); };
+      aiBtn.title = 'Analisar conversa com IA';
+      header.appendChild(aiBtn);
     }
     if (S.messages.length === 0) {
       container.style.display = 'flex';
@@ -1092,6 +1095,11 @@ window.VeltrisWPP = (() => {
     return filtered;
   }
 
+  function closeTagDrop(dropId) {
+    var drop = el(dropId);
+    if (drop) drop.classList.remove('visible');
+  }
+
   function toggleDispTagDrop(e) {
     if (e) e.stopPropagation();
     var drop = el('dispTagDrop');
@@ -1210,10 +1218,24 @@ window.VeltrisWPP = (() => {
 
   /* ============================ TAGS TAB ============================ */
   var _tagsContactList = [];
+  var _savedTags = [];
+  var _linkTagValue = '';
+
+  function loadSavedTags() {
+    try {
+      var data = localStorage.getItem('veltris_saved_tags');
+      _savedTags = data ? JSON.parse(data) : [];
+    } catch (e) { _savedTags = []; }
+  }
+
+  function saveSavedTags() {
+    try { localStorage.setItem('veltris_saved_tags', JSON.stringify(_savedTags)); } catch (e) {}
+  }
 
   async function renderTags() {
     const container = el('wppTags');
     if (!container) return;
+    loadSavedTags();
     var contacts;
     if (S._serverSessionId) {
       try {
@@ -1221,174 +1243,191 @@ window.VeltrisWPP = (() => {
         if (resp.ok) { var data = await resp.json(); contacts = data.contacts || []; }
       } catch (e) {}
     }
-    if (!contacts) contacts = await apiGet('contacts', {});
+    if (!contacts || !contacts.length) contacts = await apiGet('contacts', {});
     _tagsContactList = Array.isArray(contacts) ? contacts : [];
-    var allTags = [...new Set(_tagsContactList.flatMap(c => c.tags || []))].sort();
+    var contactTags = [...new Set(_tagsContactList.flatMap(c => c.tags || []))];
+    contactTags.forEach(function(t) {
+      if (!_savedTags.includes(t)) _savedTags.push(t);
+    });
+    saveSavedTags();
+    _savedTags.sort();
     container.innerHTML = `
       <div class="wc-tags-card">
         <div class="wc-tags-section">
-          <h4>Selecionar Contatos</h4>
-          <input id="tagSearch" class="wc-disparo-input" placeholder="Buscar contato..." oninput="VeltrisWPP.onTagSearch()" />
-          <div class="wc-disparo-list" id="tagContactList"></div>
-        </div>
-        <div class="wc-tags-section">
-          <h4>Ação</h4>
-          <div class="cs-wrap" style="position:relative;min-width:160px">
-            <div class="cs-trigger" id="tagActionTrigger" onclick="VeltrisWPP.toggleTagActionDrop(event)">
-              <span id="tagActionSelected">Adicionar tag</span>
-              <span class="cs-arrow">▾</span>
-            </div>
-            <div class="cs-drop" id="tagActionDrop">
-              <div class="cs-opt" data-value="add" onclick="VeltrisWPP.selectTagAction('add')">Adicionar tag</div>
-              <div class="cs-opt" data-value="remove" onclick="VeltrisWPP.selectTagAction('remove')">Remover tag</div>
-            </div>
+          <h4>Gerenciar Tags</h4>
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <input id="newTagInput" class="wc-disparo-input" placeholder="Nome da nova tag..." style="flex:1" onkeydown="if(event.key==='Enter')VeltrisWPP.createTag()" />
+            <button class="btn btn-save" onclick="VeltrisWPP.createTag()" style="font-size:0.72rem;white-space:nowrap">+ Criar</button>
           </div>
-          <div style="display:flex;gap:8px;margin-top:12px;align-items:flex-end">
+          <div id="savedTagsList" class="wc-tags-existing"></div>
+        </div>
+        <div class="wc-tags-section" style="border-top:1px solid var(--border);padding-top:16px">
+          <h4>Vincular Contatos</h4>
+          <div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-end">
             <div style="flex:1">
               <label style="font-size:0.65rem;color:var(--text-muted);display:block;margin-bottom:4px">Tag</label>
               <div class="cs-wrap" style="position:relative;min-width:160px">
-                <div class="cs-trigger" id="tagValueTrigger" onclick="VeltrisWPP.toggleTagValueDrop(event)">
-                  <span id="tagValueSelected">Selecionar tag</span>
+                <div class="cs-trigger" id="tagLinkTrigger" onclick="VeltrisWPP.toggleLinkTagDrop(event)">
+                  <span id="tagLinkSelected">Selecionar tag</span>
                   <span class="cs-arrow">▾</span>
                 </div>
-                <div class="cs-drop" id="tagValueDrop">
-                  <div class="cs-opt" data-value="__new" onclick="VeltrisWPP.selectTagValue('__new')">+ Nova tag...</div>
-                  ${allTags.map(t => `<div class="cs-opt" data-value="${t}" onclick="VeltrisWPP.selectTagValue('${t}')">${escHtml(t)}</div>`).join('')}
+                <div class="cs-drop" id="tagLinkDrop">
+                  <div class="cs-opt" data-value="" onclick="VeltrisWPP.selectLinkTag('')">Selecionar tag</div>
+                  ${_savedTags.map(t => `<div class="cs-opt" data-value="${t}" onclick="VeltrisWPP.selectLinkTag('${t}')">${escHtml(t)}</div>`).join('')}
                 </div>
               </div>
             </div>
-            <div id="tagNewInputWrap" style="display:none;flex:1">
-              <label style="font-size:0.65rem;color:var(--text-muted);display:block;margin-bottom:4px">Nova tag</label>
-              <input id="tagNewName" class="wc-disparo-input" placeholder="Digite o nome da nova tag" />
+          </div>
+          <input id="tagLinkSearch" class="wc-disparo-input" placeholder="Buscar contato..." oninput="VeltrisWPP.onLinkSearch()" />
+          <div class="wc-disparo-list" id="tagLinkContactList"></div>
+          <div class="wc-tags-footer" style="margin-top:10px">
+            <span id="tagLinkCount" class="wc-disparo-count">0 contatos selecionados</span>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-save" onclick="VeltrisWPP.linkTagAction('add')" style="font-size:0.72rem">Adicionar</button>
+              <button class="btn btn-outline" onclick="VeltrisWPP.linkTagAction('remove')" style="font-size:0.72rem;color:#ef4444">Remover</button>
             </div>
           </div>
-          <div id="tagExistingList" class="wc-tags-existing" style="margin-top:10px">
-            ${allTags.map(t => `<span class="wc-tag-existing" onclick="VeltrisWPP.selectTagValue('${t}')">${escHtml(t)}</span>`).join('')}
-          </div>
+          <div id="tagLinkResult" class="wc-disparo-result" style="display:none"></div>
         </div>
-        <div class="wc-tags-footer">
-          <span id="tagCount" class="wc-disparo-count">0 contatos selecionados</span>
-          <button class="btn btn-save" onclick="VeltrisWPP.applyTagAction()">Aplicar</button>
-        </div>
-        <div id="tagResult" class="wc-disparo-result" style="display:none"></div>
       </div>`;
-    renderTagContactList();
+    renderSavedTags();
+    renderLinkContactList();
   }
 
-  var _tagAction = 'add';
-  var _tagValue = '';
-
-  function getTagSelectedContacts() {
-    var checks = qsa('.tag-contact-cb:checked');
-    return Array.from(checks).map(cb => _tagsContactList.find(c => String(c.id) === cb.value)).filter(Boolean);
-  }
-
-  function updateTagCount() {
-    var count = el('tagCount');
-    var filtered = getTagSelectedContacts();
-    if (count) count.textContent = filtered.length + ' contato(s) selecionado(s)';
-    return filtered;
-  }
-
-  function onTagSearch() {
-    renderTagContactList();
-  }
-
-  function renderTagContactList() {
-    var list = el('tagContactList');
+  function renderSavedTags() {
+    var list = el('savedTagsList');
     if (!list) return;
-    var selected = new Set(Array.from(qsa('.tag-contact-cb:checked')).map(cb => cb.value));
-    var q = (el('tagSearch')?.value || '').toLowerCase();
-    var filtered = _tagsContactList.filter(c => {
+    if (_savedTags.length === 0) {
+      list.innerHTML = '<span style="font-size:0.75rem;color:var(--text-muted)">Nenhuma tag criada ainda</span>';
+      return;
+    }
+    list.innerHTML = _savedTags.map(t => `
+      <span class="wc-tag-existing" onclick="VeltrisWPP.selectLinkTag('${escHtml(t)}')">
+        ${escHtml(t)}
+        <span class="tag-del-btn" onclick="event.stopPropagation();VeltrisWPP.deleteTag('${escHtml(t)}')" style="margin-left:4px;cursor:pointer;opacity:0.5">&times;</span>
+      </span>
+    `).join('');
+  }
+
+  function createTag() {
+    var input = el('newTagInput');
+    if (!input || !input.value.trim()) return;
+    var tag = input.value.trim().toLowerCase();
+    input.value = '';
+    if (!_savedTags.includes(tag)) {
+      _savedTags.push(tag);
+      _savedTags.sort();
+      saveSavedTags();
+    }
+    renderSavedTags();
+    rebuildLinkTagDrop();
+  }
+
+  function deleteTag(tag) {
+    if (!confirm('Remover tag "' + tag + '"?')) return;
+    _savedTags = _savedTags.filter(function(t) { return t !== tag; });
+    saveSavedTags();
+    renderSavedTags();
+    rebuildLinkTagDrop();
+    _tagsContactList.forEach(function(c) {
+      var tags = c.tags || [];
+      if (tags.includes(tag)) {
+        var newTags = tags.filter(function(t) { return t !== tag; });
+        c.tags = newTags;
+        apiPatch('contacts', c.id, { tags: newTags });
+      }
+    });
+  }
+
+  function rebuildLinkTagDrop() {
+    var drop = el('tagLinkDrop');
+    if (!drop) return;
+    var selected = el('tagLinkSelected');
+    if (selected && _linkTagValue && !_savedTags.includes(_linkTagValue)) {
+      _linkTagValue = '';
+      selected.textContent = 'Selecionar tag';
+    }
+    drop.innerHTML = '<div class="cs-opt" data-value="" onclick="VeltrisWPP.selectLinkTag(\'\')">Selecionar tag</div>' +
+      _savedTags.map(function(t) {
+        return '<div class="cs-opt" data-value="' + escHtml(t) + '" onclick="VeltrisWPP.selectLinkTag(\'' + escHtml(t) + '\')">' + escHtml(t) + '</div>';
+      }).join('');
+  }
+
+  function toggleLinkTagDrop(e) {
+    if (e) e.stopPropagation();
+    var drop = el('tagLinkDrop');
+    if (!drop) return;
+    drop.classList.toggle('visible');
+    if (drop.classList.contains('visible')) {
+      setTimeout(function() { document.addEventListener('click', closeLinkTagDrop); }, 10);
+    }
+  }
+  function closeLinkTagDrop() {
+    var drop = el('tagLinkDrop');
+    if (drop) drop.classList.remove('visible');
+    document.removeEventListener('click', closeLinkTagDrop);
+  }
+  function selectLinkTag(value) {
+    _linkTagValue = value;
+    var label = value || 'Selecionar tag';
+    var sel = el('tagLinkSelected');
+    if (sel) sel.textContent = label;
+    closeLinkTagDrop();
+  }
+
+  function onLinkSearch() {
+    renderLinkContactList();
+  }
+
+  function renderLinkContactList() {
+    var list = el('tagLinkContactList');
+    if (!list) return;
+    if (!_tagsContactList || _tagsContactList.length === 0) {
+      list.innerHTML = '<div class="wc-disparo-empty">Nenhum contato encontrado. Verifique se há contatos cadastrados em Clientes.</div>';
+      updateLinkCount();
+      return;
+    }
+    var selected = new Set(Array.from(qsa('.link-contact-cb:checked')).map(function(cb) { return cb.value; }));
+    var q = (el('tagLinkSearch')?.value || '').toLowerCase();
+    var filtered = _tagsContactList.filter(function(c) {
       if (!q) return true;
       return (c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q);
     });
-    list.innerHTML = filtered.map(c => `
-      <label class="wc-disparo-item">
-        <input type="checkbox" class="tag-contact-cb" value="${c.id}" ${selected.has(c.id) ? 'checked' : ''} onchange="VeltrisWPP.updateTagCount()" />
-        <span class="wc-disparo-item-name">${escHtml(c.name || '—')}</span>
-        <span class="wc-disparo-item-phone" style="color:var(--text-dim);font-size:0.65rem">${(c.tags || []).map(t => '#' + t).join(' ') || ''}</span>
-      </label>
-    `).join('') || '<div class="wc-disparo-empty">Nenhum contato encontrado</div>';
+    list.innerHTML = filtered.map(function(c) {
+      var hasTag = _linkTagValue && (c.tags || []).includes(_linkTagValue);
+      return '<label class="wc-disparo-item" style="' + (hasTag ? 'opacity:0.5' : '') + '">' +
+        '<input type="checkbox" class="link-contact-cb" value="' + c.id + '" ' + (selected.has(c.id) ? 'checked' : '') + ' onchange="VeltrisWPP.updateLinkCount()" />' +
+        '<span class="wc-disparo-item-name">' + escHtml(c.name || '—') + '</span>' +
+        '<span class="wc-disparo-item-phone" style="color:var(--text-dim);font-size:0.65rem">' + ((c.tags || []).includes(_linkTagValue) ? '✓' : '') + '</span>' +
+        '</label>';
+    }).join('') || '<div class="wc-disparo-empty">Nenhum contato encontrado</div>';
+    updateLinkCount();
   }
 
-  function closeTagDrop(dropId) {
-    var drop = el(dropId);
-    if (drop) drop.classList.remove('visible');
+  function updateLinkCount() {
+    var count = el('tagLinkCount');
+    var checks = qsa('.link-contact-cb:checked');
+    if (count) count.textContent = checks.length + ' contato(s) selecionado(s)';
   }
 
-  function toggleTagActionDrop(e) {
-    if (e) e.stopPropagation();
-    var drop = el('tagActionDrop');
-    if (!drop) return;
-    closeTagDrop('tagFilterDrop');
-    closeTagDrop('tagValueDrop');
-    drop.classList.toggle('visible');
-    if (drop.classList.contains('visible')) {
-      setTimeout(function() { document.addEventListener('click', closeTagActionDrop); }, 10);
-    }
-  }
-  function closeTagActionDrop() {
-    closeTagDrop('tagActionDrop');
-    document.removeEventListener('click', closeTagActionDrop);
-  }
-  function selectTagAction(value) {
-    _tagAction = value;
-    var label = value === 'add' ? 'Adicionar tag' : 'Remover tag';
-    el('tagActionSelected').textContent = label;
-    closeTagActionDrop();
-  }
-
-  function toggleTagValueDrop(e) {
-    if (e) e.stopPropagation();
-    var drop = el('tagValueDrop');
-    if (!drop) return;
-    closeTagDrop('tagFilterDrop');
-    closeTagDrop('tagActionDrop');
-    drop.classList.toggle('visible');
-    if (drop.classList.contains('visible')) {
-      setTimeout(function() { document.addEventListener('click', closeTagValueDrop); }, 10);
-    }
-  }
-  function closeTagValueDrop() {
-    closeTagDrop('tagValueDrop');
-    document.removeEventListener('click', closeTagValueDrop);
-  }
-  function selectTagValue(value) {
-    _tagValue = value;
-    var wrap = el('tagNewInputWrap');
-    if (value === '__new') {
-      el('tagValueSelected').textContent = '+ Nova tag...';
-      if (wrap) wrap.style.display = '';
-    } else {
-      el('tagValueSelected').textContent = value;
-      if (wrap) wrap.style.display = 'none';
-    }
-    closeTagValueDrop();
-  }
-
-  async function applyTagAction() {
-    var result = el('tagResult');
+  async function linkTagAction(action) {
+    var result = el('tagLinkResult');
     if (!result) return;
-    var contacts = getTagSelectedContacts();
-    if (contacts.length === 0) { alert('Selecione pelo menos um contato'); return; }
-    var tag = _tagValue;
-    if (tag === '__new') {
-      tag = (el('tagNewName')?.value || '').trim().toLowerCase();
-      if (!tag) { alert('Digite o nome da nova tag'); return; }
-    }
-    if (!tag) { alert('Selecione ou digite uma tag'); return; }
-    var action = _tagAction;
+    if (!_linkTagValue) { alert('Selecione uma tag'); return; }
+    var checks = qsa('.link-contact-cb:checked');
+    if (checks.length === 0) { alert('Selecione pelo menos um contato'); return; }
     result.style.display = 'none';
     var updated = 0, failed = 0;
-    for (var i = 0; i < contacts.length; i++) {
-      var c = contacts[i];
+    for (var i = 0; i < checks.length; i++) {
+      var c = _tagsContactList.find(function(ct) { return String(ct.id) === checks[i].value; });
+      if (!c) continue;
       var tags = c.tags || [];
       if (action === 'add') {
-        if (!tags.includes(tag)) tags = [...tags, tag];
+        if (!tags.includes(_linkTagValue)) tags = [...tags, _linkTagValue];
         else { updated++; continue; }
       } else {
-        tags = tags.filter(t => t !== tag);
+        if (!tags.includes(_linkTagValue)) { updated++; continue; }
+        tags = tags.filter(function(t) { return t !== _linkTagValue; });
       }
       try {
         await apiPatch('contacts', c.id, { tags: tags });
@@ -1401,33 +1440,7 @@ window.VeltrisWPP = (() => {
       '<strong>' + updated + '</strong> contato(s) atualizado(s)' +
       (failed > 0 ? ', <strong>' + failed + '</strong> falha(s)' : ' com sucesso') +
       '</div>';
-    if (action === 'add') {
-      refreshTagDropdowns();
-    }
-    if (action === 'remove') {
-      var sel = el('tagValueSelected');
-      if (sel) sel.textContent = 'Selecionar tag';
-      _tagValue = '';
-    }
-    updateTagCount();
-  }
-
-  function refreshTagDropdowns() {
-    var allTags = [...new Set(_tagsContactList.flatMap(c => c.tags || []))].sort();
-    var drop = el('tagValueDrop');
-    if (drop) {
-      drop.innerHTML = '<div class="cs-opt" data-value="__new" onclick="VeltrisWPP.selectTagValue(\'__new\')">+ Nova tag...</div>' +
-        allTags.map(t => '<div class="cs-opt" data-value="' + escHtml(t) + '" onclick="VeltrisWPP.selectTagValue(\'' + escHtml(t) + '\')">' + escHtml(t) + '</div>').join('');
-    }
-    var dispDrop = el('dispTagDrop');
-    if (dispDrop) {
-      dispDrop.innerHTML = '<div class="cs-opt" data-value="" onclick="VeltrisWPP.selectDispTag(\'\')">Todas as tags</div>' +
-        allTags.map(t => '<div class="cs-opt" data-value="' + escHtml(t) + '" onclick="VeltrisWPP.selectDispTag(\'' + escHtml(t) + '\')">' + escHtml(t) + '</div>').join('');
-    }
-    var existingList = el('tagExistingList');
-    if (existingList) {
-      existingList.innerHTML = allTags.map(t => '<span class="wc-tag-existing" onclick="VeltrisWPP.selectTagValue(\'' + escHtml(t) + '\')">' + escHtml(t) + '</span>').join('');
-    }
+    renderLinkContactList();
   }
 
   /* ============================ CLIENTES TABLE ============================ */
@@ -2378,27 +2391,43 @@ window.VeltrisWPP = (() => {
 
   var _wcLabelFilter = ''
 
+  var _chatShowing = false;
+
   function renderConversasChatView() {
     const container = el('wppConversas');
     if (!container) return;
+    _chatShowing = false;
+    S.activeChatId = null;
     container.innerHTML = `
-      <div class="wc-layout">
-        <div class="wc-col wc-col-1">
-          <div class="wc-search"><input placeholder="Buscar conversa..." oninput="VeltrisWPP.searchChats(this.value)" /></div>
-          <div class="wc-filter-bar" id="wcFilterBar"></div>
-          <div class="wc-list" id="wcChatList"></div>
-        </div>
-        <div class="wc-col wc-col-2">
-          <div class="wc-window-header" id="wcWindowHeader"></div>
-          <div class="wc-messages" id="wcMessages"></div>
-          <div class="wc-input-area" id="wcInputArea" style="display:none">
-            <textarea id="wcMessageInput" placeholder="Digite sua mensagem..." rows="2" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();VeltrisWPP.sendMessage()}"></textarea>
-            <button onclick="VeltrisWPP.sendMessage()">Enviar</button>
+      <div class="wc-chat-list-view" id="wcChatListView">
+        <div class="wc-search"><input placeholder="Buscar conversa..." oninput="VeltrisWPP.searchChats(this.value)" /></div>
+        <div class="wc-list" id="wcChatList"></div>
+      </div>
+      <div class="wc-chat-view" id="wcChatView" style="display:none">
+        <div class="wc-window-header" id="wcWindowHeader">
+          <button class="wc-back-btn" onclick="VeltrisWPP.backToChatList()"><i class="fi fi-rr-angle-left"></i></button>
+          <div class="wc-avatar" id="wcChatAvatar"></div>
+          <div class="wc-info" id="wcChatInfo">
+            <div class="name" id="wcChatName"></div>
+            <div class="status" id="wcChatStatus"></div>
           </div>
         </div>
-        <div class="wc-col wc-col-3" id="wcContactPanel"></div>
+        <div class="wc-messages" id="wcMessages"></div>
+        <div class="wc-input-area" id="wcInputArea" style="display:none">
+          <textarea id="wcMessageInput" placeholder="Digite sua mensagem..." rows="2" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();VeltrisWPP.sendMessage()}"></textarea>
+          <button onclick="VeltrisWPP.sendMessage()">Enviar</button>
+        </div>
       </div>`;
     renderChatList();
+  }
+
+  function backToChatList() {
+    _chatShowing = false;
+    S.activeChatId = null;
+    var listView = el('wcChatListView');
+    var chatView = el('wcChatView');
+    if (listView) listView.style.display = '';
+    if (chatView) chatView.style.display = 'none';
   }
 
   function searchChats(q) {
@@ -2537,13 +2566,15 @@ window.VeltrisWPP = (() => {
     updateDisparoCount,
     toggleDispTagDrop,
     selectDispTag,
-    onTagSearch,
-    updateTagCount,
-    toggleTagActionDrop,
-    selectTagAction,
-    toggleTagValueDrop,
-    selectTagValue,
-    applyTagAction,
+    createTag,
+    deleteTag,
+    toggleLinkTagDrop,
+    selectLinkTag,
+    onLinkSearch,
+    updateLinkCount,
+    linkTagAction,
+    backToChatList,
+    switchTab,
   };
 })();
 

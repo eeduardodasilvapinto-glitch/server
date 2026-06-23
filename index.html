@@ -1617,6 +1617,22 @@
             opacity: 1;
             box-shadow: none;
         }
+        .sidebar-subnav {
+            flex-direction: column; gap: 1px;
+            margin: 0 4px 0 16px; padding-left: 8px;
+            border-left: 1px solid rgba(var(--opacity-color), 0.08);
+        }
+        .sidebar:not(.closed) .sidebar-subnav { display: flex; }
+        .sidebar.closed .sidebar-subnav { display: none; }
+        .sidebar.closed .sidebar-subnav .tab span { display: none; }
+        .sidebar-subnav.collapsed { display: none !important; }
+        .sidebar-subnav .tab {
+            font-size: 0.78rem; padding: 7px 12px; gap: 8px;
+            border-radius: 8px;
+        }
+        .sidebar-subnav .tab i { font-size: 0.85rem; width: 20px; text-align: center; display: inline-flex; align-items: center; justify-content: center; }
+        .sidebar-subnav .tab.active { color: var(--accent-light); }
+        .sub-arrow { margin-left: auto; font-size: 0.55rem; transition: transform 0.2s; color: var(--text-muted); }
 
         .sidebar-nav .tab:hover .svg-icon,
         .sidebar-nav .tab.active .svg-icon {
@@ -7261,8 +7277,16 @@
                             <span>Métricas</span></button>
                         <button class="tab" data-tab="analise"><i class="fi fi-rr-search"></i>
                             <span>Analisar</span></button>
-                        <button class="tab" data-tab="wpp"><i class="fi fi-rr-comment-alt"></i>
-                            <span>WhatsApp</span></button>
+                        <button class="tab" data-tab="wpp" id="wppParentTab"><i class="fi fi-rr-comment-alt"></i>
+                            <span>WhatsApp</span> <span class="sub-arrow" id="wppArrow">▾</span></button>
+                        <div class="sidebar-subnav collapsed" id="wppSubnav">
+                            <button class="tab sub-tab wpp-tab-btn active" data-wpp-tab="whatsapp" data-parent="wpp"><i class="fi fi-rr-comment-alt"></i> <span>Chats</span></button>
+                            <button class="tab sub-tab wpp-tab-btn" data-wpp-tab="clientes" data-parent="wpp"><i class="fi fi-rr-clipboard-list"></i> <span>Clientes</span></button>
+                            <button class="tab sub-tab wpp-tab-btn" data-wpp-tab="agenda" data-parent="wpp"><i class="fi fi-rr-calendar"></i> <span>Agenda</span></button>
+                            <button class="tab sub-tab wpp-tab-btn" data-wpp-tab="metricas" data-parent="wpp"><i class="fi fi-rr-chart-line-up"></i> <span>Métricas</span></button>
+                            <button class="tab sub-tab wpp-tab-btn" data-wpp-tab="disparos" data-parent="wpp"><i class="fi fi-rr-paper-plane"></i> <span>Disparos</span></button>
+                            <button class="tab sub-tab wpp-tab-btn" data-wpp-tab="tags" data-parent="wpp"><i class="fi fi-rr-tags"></i> <span>Tags</span></button>
+                        </div>
                         <button class="tab" data-tab="empresas"><i class="fi fi-rr-building"></i>
                             <span>Empresas</span></button>
                         <button class="tab" data-tab="usuarios" id="sidebarUsuariosBtn"><i class="fi fi-rr-users"></i>
@@ -8192,22 +8216,6 @@
                     <!-- TAB WHATSAPP CRM -->
                     <div class="tab-content" id="tabWpp"
                         style="flex-direction:column;flex:1;overflow-y:auto;min-height:0">
-
-                        <!-- Sub-navigation -->
-                        <div class="wpp-subnav" style="position:sticky;top:0;z-index:10">
-                            <button class="wpp-tab-btn active" data-wpp-tab="whatsapp"><i
-                                    class="fi fi-rr-comment-alt"></i> WhatsApp</button>
-                            <button class="wpp-tab-btn" data-wpp-tab="clientes"><i class="fi fi-rr-clipboard-list"></i>
-                                Clientes</button>
-                            <button class="wpp-tab-btn" data-wpp-tab="agenda"><i class="fi fi-rr-calendar"></i>
-                                Agenda</button>
-                            <button class="wpp-tab-btn" data-wpp-tab="metricas"><i class="fi fi-rr-chart-line-up"></i>
-                                Métricas</button>
-                            <button class="wpp-tab-btn" data-wpp-tab="disparos"><i class="fi fi-rr-send"></i><i class="fi fi-rr-phone" style="margin-left:-4px"></i>
-                                Disparos</button>
-                            <button class="wpp-tab-btn" data-wpp-tab="tags"><i class="fi fi-rr-tags"></i>
-                                Tags</button>
-                        </div>
 
                         <!-- Tab contents -->
                         <div class="wpp-tab-content active" id="wppTabWhatsapp">
@@ -12192,6 +12200,23 @@
                 tab.addEventListener('click', function () {
                     closeMobileSidebar();
                     var key = tab.dataset.tab;
+                    var wppKey = tab.dataset.wppTab;
+                    // Se for sub-item do WhatsApp, ativa a tab pai primeiro
+                    if (wppKey) {
+                        var parentTab = document.querySelector('.tab[data-tab="' + tab.dataset.parent + '"]');
+                        if (parentTab && !parentTab.classList.contains('active')) {
+                            parentTab.click();
+                        }
+                        if (window.VeltrisWPP && window.VeltrisWPP.switchTab) {
+                            window.VeltrisWPP.switchTab(wppKey);
+                        } else {
+                            var wppBtn = document.querySelector('[data-wpp-tab="' + wppKey + '"]');
+                            if (wppBtn) wppBtn.click();
+                        }
+                        document.querySelectorAll('.sub-tab').forEach(function (st) { st.classList.remove('active'); });
+                        tab.classList.add('active');
+                        return;
+                    }
                     document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
                     document.querySelectorAll('.tab-content').forEach(function (tc) { tc.classList.remove('active'); });
                     tab.classList.add('active');
@@ -12208,6 +12233,18 @@
                     }
                     target.classList.add('active');
                     if (!hasTabAccess(key) && key !== 'usuarios') return;
+                    if (key === 'wpp') {
+                        var subnav = document.getElementById('wppSubnav');
+                        var arrow = document.getElementById('wppArrow');
+                        if (subnav) {
+                            var isOpen = !subnav.classList.contains('collapsed');
+                            subnav.classList.toggle('collapsed');
+                            if (arrow) arrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+                        }
+                        var firstSub = document.querySelector('.sub-tab[data-wpp-tab]');
+                        if (firstSub) firstSub.click();
+                        return;
+                    }
                     if (key === 'conteudos') renderKanban();
                     if (key === 'ia') { renderChat(); reloadKnowledgeBase(function () { document.getElementById('kbText').value = loadKnowledgeBase(); }); }
                     if (key === 'financeiro') renderFinanceCharts();
