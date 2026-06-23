@@ -114,22 +114,25 @@ async function startSession(sessionId, userId, companyId) {
 
   function startOutgoingPump() {
     if (entry.outgoingInterval) clearInterval(entry.outgoingInterval)
+    logger.info({ sessionId }, 'Outgoing pump started')
     entry.outgoingInterval = setInterval(async () => {
-      if (!entry.sock) return
+      if (!entry.sock) { logger.debug({ sessionId }, 'Pump: no socket'); return }
       try {
         const { data: pending } = await supabase.from('whatsapp_messages').select('id,chat_id,text')
           .eq('session_id', sessionId).eq('direction', 'sent')
-          .gte('created_at', new Date(Date.now() - 30000).toISOString()).order('created_at', { ascending: true }).limit(20)
-        if (!pending?.length) return
+          .gte('created_at', new Date(Date.now() - 120000).toISOString()).order('created_at', { ascending: true }).limit(20)
+        if (!pending?.length) { logger.debug({ sessionId }, 'Pump: no pending'); return }
+        logger.info({ sessionId, count: pending.length }, 'Pump: processing pending messages')
         for (const msg of pending) {
           const { data: chats } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', msg.chat_id).limit(1)
           const jid = chats?.[0]?.remote_jid
-          if (!jid) continue
+          if (!jid) { logger.warn({ sessionId, msgId: msg.id }, 'Pump: no jid found'); continue }
           await entry.sock.sendMessage(jid, { text: msg.text })
           await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id)
-          logger.info({ sessionId, jid, msgId: msg.id }, 'Message sent')
+          logger.info({ sessionId, jid, msgId: msg.id }, 'Pump: message sent')
         }
       } catch (e) {
+        logger.error({ sessionId, error: e.message }, 'Pump error')
         if (e.message?.includes('Connection closed')) { entry.sock = null; stopOutgoingPump() }
       }
     }, 3000)
@@ -461,6 +464,18 @@ const server = http.createServer(async (req, res) => {
     const sid = url.searchParams.get('sessionId')
     const entry = sid ? sessions.get(sid) : null
     res.writeHead(200); res.end(JSON.stringify({ syncing: entry?.syncingHistory || false, progress: entry?.syncProgress || '' })); return
+  }
+
+  if (pathname === '/pump-status') {
+    const sid = url.searchParams.get('sessionId')
+    const entry = sid ? sessions.get(sid) : null
+    const pumpRunning = !!entry?.outgoingInterval
+    let pending = []
+    if (sid) {
+      const { data } = await supabase.from('whatsapp_messages').select('id,chat_id,text,direction,created_at').eq('session_id', sid).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 120000).toISOString()).limit(10)
+      pending = data || []
+    }
+    res.writeHead(200); res.end(JSON.stringify({ pumpRunning, pendingCount: pending.length, pending, hasSocket: !!entry?.sock, sessionStatus: entry?.status })); return
   }
 
   if (pathname === '/connect') {
