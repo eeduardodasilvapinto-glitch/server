@@ -16,7 +16,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
 const AUTH_BASE = process.env.WPP_AUTH_DIR || './auth'
 const MEDIA_DIR = process.env.WPP_MEDIA_DIR || './media'
-const HTTP_PORT = process.env.WPP_HTTP_PORT || 3123
+const HTTP_PORT = process.env.PORT || process.env.WPP_HTTP_PORT || 3123
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } })
