@@ -6,7 +6,7 @@
   var SUPABASE_ANON_KEY = 'sb_publishable_gsf7GLZd9jqL-r_MuQQcuw_g9CONjKt';
   // ──────────────────────────────────────────────────
 
-  var PROXY_ACTIVE = window.location.origin && window.location.origin.indexOf('vercel.app') >= 0;
+  var PROXY_ACTIVE = typeof window !== 'undefined' && window.location.origin && window.location.origin.indexOf('vercel.app') >= 0;
   var FUNCTIONS_URL = PROXY_ACTIVE ? window.location.origin + '/api' : SUPABASE_URL + '/functions/v1';
   var REST_URL = SUPABASE_URL + '/rest/v1';
 
@@ -722,7 +722,7 @@
         body: JSON.stringify({ action: action, data: data || {} }),
       });
       var result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Erro na requisição (' + res.status + ')');
+      if (!res.ok) throw new Error(result.error || 'Erro na requisição');
       return result;
     },
 
