@@ -460,6 +460,16 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, removed: toDelete.length })); return
   }
 
+  if (pathname === '/add-auth-column') {
+    try {
+      const { error } = await supabase.rpc('exec_sql', { sql: "ALTER TABLE whatsapp_sessions ADD COLUMN IF NOT EXISTS auth_creds JSONB;" })
+      res.writeHead(200); res.end(JSON.stringify({ ok: !error, error: error?.message || null }))
+    } catch (e) {
+      res.writeHead(200); res.end(JSON.stringify({ ok: false, error: e.message, hint: 'Rode manualmente no Supabase SQL Editor: ALTER TABLE whatsapp_sessions ADD COLUMN IF NOT EXISTS auth_creds JSONB;' }))
+    }
+    return
+  }
+
   if (pathname === '/send-message' && req.method === 'POST') {
     let body = ''
     req.on('data', chunk => body += chunk)
