@@ -159,7 +159,7 @@
       }
       var cid = this._getCompanyId();
       if (cid && this._isCompanyScoped(table)) {
-        filters['company_id'] = 'eq.' + cid;
+        filters['company_id'] = cid;
       }
       var proxyParams = { select: select, filters: filters };
       if (order) proxyParams.order = order;
@@ -191,7 +191,7 @@
       }
       var cid = this._getCompanyId();
       if (cid && this._isCompanyScoped(table)) {
-        filters['company_id'] = 'eq.' + cid;
+        filters['company_id'] = cid;
       }
       await this._proxyCall('update', table, { filters: filters }, body);
     },
@@ -209,7 +209,7 @@
       }
       var cid = this._getCompanyId();
       if (cid && this._isCompanyScoped(table)) {
-        filters['company_id'] = 'eq.' + cid;
+        filters['company_id'] = cid;
       }
       await this._proxyCall('delete', table, { filters: filters });
     },
