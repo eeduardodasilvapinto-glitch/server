@@ -250,6 +250,9 @@ async function startSession(sessionId, userId, companyId) {
         }
         if (inserts.length) {
           await supabase.from('whatsapp_messages').insert(inserts)
+          // Trim all affected chats
+          const trimmedChats = new Set(inserts.map(m => m.chat_id))
+          for (const tcid of trimmedChats) trimMessages(tcid)
         }
       }
     }
@@ -352,6 +355,7 @@ async function startSession(sessionId, userId, companyId) {
             const mp = { chat_id: chatId, session_id: sessionId, text: msgContent, direction: dir, created_at: new Date(msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()).toISOString() }
             if (mediaUrl) { mp.media_url = mediaUrl; mp.message_type = msgType }
             await supabase.from('whatsapp_messages').insert(mp)
+            trimMessages(chatId)
           }
         }
       } catch (e) {}
@@ -403,6 +407,16 @@ async function syncChatsFromStore(sessionId, companyId) {
       await supabase.from('whatsapp_chats').insert(p); created++
     }
     if (created) logger.info({ sessionId, created }, 'Chats synced from store')
+  } catch (e) {}
+}
+
+async function trimMessages(chatId, maxMessages = 200) {
+  try {
+    const { data: ids } = await supabase.from('whatsapp_messages').select('id').eq('chat_id', chatId).order('created_at', { ascending: false })
+    if (ids?.length > maxMessages) {
+      const toDelete = ids.slice(maxMessages).map(m => m.id)
+      await supabase.from('whatsapp_messages').delete().in('id', toDelete)
+    }
   } catch (e) {}
 }
 
@@ -566,12 +580,12 @@ const server = http.createServer(async (req, res) => {
         const matchIds = []
         if (allChats) for (const ch of allChats) { if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np) matchIds.push(ch.id) }
         if (matchIds.length) {
-          const result = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).range(0, 999)
+          const result = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).range(0, 199)
           if (result.data?.length) messages = result.data
         }
       }
     } else {
-      const result = await supabase.from('whatsapp_messages').select('*').eq('chat_id', cid).order('created_at', { ascending: false }).range(0, 999)
+      const result = await supabase.from('whatsapp_messages').select('*').eq('chat_id', cid).order('created_at', { ascending: false }).range(0, 199)
       messages = result.data || []
       // Merge from all chats with same phone
       const { data: chat } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', cid).limit(1)
@@ -581,7 +595,7 @@ const server = http.createServer(async (req, res) => {
         const matchIds = [cid]
         if (allChats) for (const ch of allChats) { if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np && ch.id !== cid) matchIds.push(ch.id) }
         if (matchIds.length > 1) {
-          const { data } = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).range(0, 999)
+          const { data } = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).range(0, 199)
           if (data?.length) {
             messages = data
             for (const mid of matchIds) { if (mid !== cid) { await supabase.from('whatsapp_messages').update({ chat_id: cid }).eq('chat_id', mid); await supabase.from('whatsapp_chats').delete().eq('id', mid) } }
@@ -655,6 +669,7 @@ const server = http.createServer(async (req, res) => {
           }
         }
         await supabase.from('whatsapp_messages').insert({ chat_id: chatId, session_id: data.sessionId, text: data.text.substring(0, 500), direction: 'sent', created_at: new Date().toISOString() })
+        trimMessages(chatId)
         res.writeHead(200); res.end(JSON.stringify({ ok: true }))
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
