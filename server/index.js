@@ -435,6 +435,27 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ contacts: final })); return
   }
 
+  if (pathname === '/remove-lids') {
+    const { data: allC } = await supabase.from('contacts').select('id,name,phone')
+    const toRemove = (allC || []).filter(c => { const p = normalizePhone(c.phone || ''); return p.length >= 14 })
+    if (toRemove.length) { await supabase.from('contacts').delete().in('id', toRemove.map(c => c.id)) }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, removed: toRemove.length })); return
+  }
+
+  if (pathname === '/deduplicate-contacts') {
+    const { data: all } = await supabase.from('contacts').select('id,name,phone').order('created_at', { ascending: true })
+    const seen = {}; const toDelete = []
+    if (all) {
+      for (const c of all) {
+        const key = normalizePhone(c.phone) + '|' + ((c.name || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+        if (seen[key]) { toDelete.push(c.id) }
+        else { seen[key] = true }
+      }
+    }
+    if (toDelete.length) { await supabase.from('contacts').delete().in('id', toDelete) }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, removed: toDelete.length })); return
+  }
+
   if (pathname === '/send-message' && req.method === 'POST') {
     let body = ''
     req.on('data', chunk => body += chunk)
