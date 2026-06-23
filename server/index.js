@@ -3,14 +3,15 @@
    Gerencia N sessoes do WhatsApp, isoladas por usuario/empresa
    ================================================================ */
 
+import WebSocket from 'ws'
+globalThis.WebSocket = WebSocket
+
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage } from '@whiskeysockets/baileys'
-import { createClient } from '@supabase/supabase-js'
 import QRCode from 'qrcode'
 import pino from 'pino'
 import fs from 'fs'
 import path from 'path'
 import http from 'http'
-import WebSocket from 'ws'
 import 'dotenv/config'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
@@ -20,6 +21,8 @@ const MEDIA_DIR = process.env.WPP_MEDIA_DIR || './media'
 const HTTP_PORT = process.env.PORT || process.env.WPP_HTTP_PORT || 3123
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
+
+const { createClient } = await import('@supabase/supabase-js')
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false }, realtime: { transport: WebSocket } })
 
 if (!fs.existsSync(AUTH_BASE)) fs.mkdirSync(AUTH_BASE, { recursive: true })
