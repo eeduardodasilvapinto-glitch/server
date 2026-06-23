@@ -95,7 +95,7 @@ async function startSession(sessionId, userId, companyId) {
     }
   } catch (e) { logger.warn({ sessionId }, 'No auth stored yet') }
 
-  const entry = { sock: null, authDir, qrCode: null, outgoingInterval: null, reconnectTimeout: null, phone: null, status: 'connecting', userId, companyId, labels: {}, chatLabels: {} }
+  const entry = { sock: null, authDir, qrCode: null, outgoingInterval: null, reconnectTimeout: null, phone: null, status: 'connecting', userId, companyId, labels: {}, chatLabels: {}, syncingHistory: false, syncProgress: '' }
   sessions.set(sessionId, entry)
 
   const { state, saveCreds } = await useMultiFileAuthState(authDir)
@@ -158,9 +158,10 @@ async function startSession(sessionId, userId, companyId) {
   })
 
   sock.ev.on('messaging-history.set', async ({ chats, contacts: historyContacts, messages }) => {
+    entry.syncingHistory = true
+    entry.syncProgress = 'Processando histórico...'
     logger.info({ sessionId, chats: chats?.length, contacts: historyContacts?.length, messages: messages?.length }, 'History sync')
-    if (!chats?.length && !historyContacts?.length && !messages?.length) return
-    // Build contact name map
+    if (!chats?.length && !historyContacts?.length && !messages?.length) { entry.syncingHistory = false; entry.syncProgress = ''; return }
     const nameMap = {}
     if (historyContacts) {
       for (const c of historyContacts) {
@@ -170,15 +171,14 @@ async function startSession(sessionId, userId, companyId) {
         if (cName) nameMap[jid] = cName
       }
     }
-    // Process chats
     if (chats) {
+      entry.syncProgress = `Sincronizando ${chats.length} conversas...`
       for (const chat of chats) {
         const jid = chat.id
         if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter') || jid === 'status@broadcast') continue
         const phone = jid.split('@')[0]
         if (normalizePhone(phone).length >= 14) continue
         const contactName = nameMap[jid] || (typeof chat.name === 'string' ? chat.name : (typeof chat.notify === 'string' ? chat.notify : null)) || phone
-        // Upsert contact
         let contactId = null
         const existingContact = await findContactByPhone(phone, companyId)
         if (existingContact) { contactId = existingContact.id }
@@ -188,7 +188,6 @@ async function startSession(sessionId, userId, companyId) {
           const { data: newC } = await supabase.from('contacts').insert(p).select().single()
           if (newC) contactId = newC.id
         }
-        // Upsert chat
         const existingChat = await findChat(jid, sessionId)
         if (!existingChat) {
           await supabase.from('whatsapp_chats').insert({
@@ -199,10 +198,11 @@ async function startSession(sessionId, userId, companyId) {
         }
       }
     }
-    // Process messages in batches
     if (messages) {
+      const total = messages.length
       const batchSize = 100
-      for (let i = 0; i < messages.length; i += batchSize) {
+      for (let i = 0; i < total; i += batchSize) {
+        entry.syncProgress = `Baixando mensagens ${Math.min(i + batchSize, total)}/${total}...`
         const batch = messages.slice(i, i + batchSize)
         const inserts = []
         for (const msg of batch) {
@@ -222,6 +222,8 @@ async function startSession(sessionId, userId, companyId) {
         }
       }
     }
+    entry.syncingHistory = false
+    entry.syncProgress = 'Sincronização concluída!'
     logger.info({ sessionId }, 'History sync completed')
   })
 
@@ -422,6 +424,12 @@ const server = http.createServer(async (req, res) => {
     const sid = url.searchParams.get('sessionId')
     const entry = sid ? sessions.get(sid) : null
     res.writeHead(200); res.end(JSON.stringify({ qr_code: entry?.qrCode || null })); return
+  }
+
+  if (pathname === '/sync-status') {
+    const sid = url.searchParams.get('sessionId')
+    const entry = sid ? sessions.get(sid) : null
+    res.writeHead(200); res.end(JSON.stringify({ syncing: entry?.syncingHistory || false, progress: entry?.syncProgress || '' })); return
   }
 
   if (pathname === '/connect') {
