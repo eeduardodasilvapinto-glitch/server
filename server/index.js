@@ -25,12 +25,50 @@ if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true })
 
 const sessions = new Map()
 
-function normalizeJid(raw) {
-  if (!raw) return null
-  if (raw.includes('@')) return raw
-  let cleaned = raw.replace(/\D/g, '')
-  if (cleaned.length <= 10) cleaned = '55' + cleaned
-  return cleaned + '@s.whatsapp.net'
+function normalizePhone(raw) {
+  if (!raw) return ''
+  return raw.replace(/\D/g, '').replace(/^55/, '')
+}
+
+function phoneVariants(raw) {
+  const p = normalizePhone(raw)
+  if (!p) return []
+  return [p, '55' + p, p.replace(/^(\d{2})/, '')]
+}
+
+async function findContact(phone, name, companyId) {
+  const variants = phoneVariants(phone)
+  // Try all phone variants
+  for (const v of variants) {
+    let q = supabase.from('contacts').select('id,name,phone').eq('phone', v)
+    if (companyId) q = q.eq('company_id', companyId)
+    const { data } = await q.limit(1)
+    if (data?.length) return data[0]
+  }
+  // Try by name
+  if (name && name !== phone) {
+    const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const { data: byName } = await supabase.from('contacts').select('id,name,phone')
+    if (byName) {
+      for (const c of byName) {
+        const cn = (c.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        if (cn === cleanName) return c
+      }
+    }
+  }
+  return null
+}
+
+async function findChat(jid, sessionId) {
+  const phone = jid.split('@')[0]
+  const variants = [jid, phone, phone + '@s.whatsapp.net']
+  for (const v of variants) {
+    let q = supabase.from('whatsapp_chats').select('id,unread_count').eq('remote_jid', v)
+    if (sessionId) q = q.eq('session_id', sessionId)
+    const { data } = await q.limit(1)
+    if (data?.length) return data[0]
+  }
+  return null
 }
 
 async function startSession(sessionId, userId, companyId) {
@@ -105,13 +143,13 @@ async function startSession(sessionId, userId, companyId) {
       if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid === 'status@broadcast') continue
       if (!c.name && !c.notify) continue
       const phone = jid.split('@')[0]
-      if (phone.replace(/\D/g,'').length >= 14) continue
+      if (normalizePhone(phone).length >= 14) continue
       const name = typeof c.name === 'string' ? c.name : (typeof c.notify === 'string' ? c.notify : phone)
-      const { data: existing } = await supabase.from('contacts').select('id').or(`phone.eq.${phone},phone.eq.${jid}`).limit(1)
-      if (existing?.length > 0) {
-        await supabase.from('contacts').update({ name, phone }).eq('id', existing[0].id)
+      const existing = await findContact(phone, name, companyId)
+      if (existing) {
+        await supabase.from('contacts').update({ name, phone: normalizePhone(phone) }).eq('id', existing.id)
       } else {
-        const p = { name, phone, source: 'whatsapp', stage: 'novo', score: 0 }
+        const p = { name, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }
         if (companyId) p.company_id = companyId
         await supabase.from('contacts').insert(p)
       }
@@ -147,38 +185,30 @@ async function startSession(sessionId, userId, companyId) {
         const msgContent = msgType === 'audio' ? 'Mensagem de áudio' : msgType === 'image' ? 'Foto' : msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || msg.message.videoMessage?.caption || msg.message.documentMessage?.caption || ''
         if (!msgContent && !mediaUrl) continue
         const phone = jid.split('@')[0]
+        if (normalizePhone(phone).length >= 14) continue
         const pushName = msg.pushName || phone
         const isFromMe = msg.key.fromMe
 
         let contactId = null
-        let q = supabase.from('contacts').select('id').eq('phone', phone).limit(1)
-        if (companyId) q = q.eq('company_id', companyId)
-        const { data: contacts } = await q
-        if (contacts?.length > 0) {
-          contactId = contacts[0].id
+        const existing = await findContact(phone, pushName, companyId)
+        if (existing) {
+          contactId = existing.id
           await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', contactId)
         } else {
-          const p = { name: pushName, phone, source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }
+          const p = { name: pushName, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }
           if (companyId) p.company_id = companyId
           const { data: newC } = await supabase.from('contacts').insert(p).select().single()
           if (newC) contactId = newC.id
         }
 
         let chatId = null
-        let { data: chats } = await supabase.from('whatsapp_chats').select('id,unread_count').eq('remote_jid', jid).limit(1)
-        if (!chats?.length) {
-          const altJids = [phone, phone + '@s.whatsapp.net']
-          for (const aj of altJids) {
-            const { data: alt } = await supabase.from('whatsapp_chats').select('id,unread_count').eq('remote_jid', aj).limit(1)
-            if (alt?.length) { chats = alt; break }
-          }
-        }
-        if (chats?.length > 0) {
-          chatId = chats[0].id
+        const existingChat = await findChat(jid, sessionId)
+        if (existingChat) {
+          chatId = existingChat.id
           await supabase.from('whatsapp_chats').update({
             remote_jid: jid, last_message: { text: msgContent.substring(0, 200), at: new Date().toISOString() },
             last_message_at: new Date().toISOString(),
-            unread_count: isFromMe ? (chats[0].unread_count || 0) : (chats[0].unread_count || 0) + 1,
+            unread_count: isFromMe ? (existingChat.unread_count || 0) : (existingChat.unread_count || 0) + 1,
             contact_name: pushName
           }).eq('id', chatId)
         } else {
@@ -214,12 +244,12 @@ async function syncContacts(sessionId, companyId) {
       if (jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter') || jid === 'status@broadcast') continue
       if (!contact.name && !contact.notify && !contact.verifiedName) continue
       const phone = jid.split('@')[0]
-      if (phone.replace(/\D/g,'').length >= 14) continue
+      if (normalizePhone(phone).length >= 14) continue
       const name = contact.name || contact.notify || contact.verifiedName || phone
-      const { data: existing } = await supabase.from('contacts').select('id').eq('phone', phone).limit(1)
-      if (existing?.length > 0) { skipped++ }
+      const existing = await findContact(phone, name, companyId)
+      if (existing) { skipped++ }
       else {
-        const p = { name, phone, source: 'whatsapp', stage: 'novo', score: 0 }
+        const p = { name, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }
         if (companyId) p.company_id = companyId
         await supabase.from('contacts').insert(p); synced++
       }
@@ -351,14 +381,14 @@ const server = http.createServer(async (req, res) => {
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
     const { data: chats } = await supabase.from('whatsapp_chats').select('*').not('last_message_at', 'is', null).order('last_message_at', { ascending: false }).limit(500)
     const { data: dbContacts } = await supabase.from('contacts').select('phone,name')
-    // Dedup by phone
+    // Dedup by normalized phone
     const seenPhone = {}; const deduped = []
-    if (chats) { for (const c of chats) { const p = c.remote_jid?.split('@')[0] || ''; if (p && !seenPhone[p]) { seenPhone[p] = true; deduped.push(c) } else if (!p) { deduped.push(c) } } }
-    // Map contact names
+    if (chats) { for (const c of chats) { const p = normalizePhone(c.remote_jid?.split('@')[0] || ''); if (p && !seenPhone[p]) { seenPhone[p] = true; deduped.push(c) } else if (!p) { deduped.push(c) } } }
+    // Map contact names from contacts table by normalized phone
     const nameMap = {}
-    if (dbContacts) { for (const c of dbContacts) { if (c.name && !c.name.includes('@') && c.name !== c.phone && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x')) { nameMap[c.phone] = c.name } } }
+    if (dbContacts) { for (const c of dbContacts) { if (c.name && !c.name.includes('@') && c.name !== c.phone && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x')) { nameMap[normalizePhone(c.phone)] = c.name } } }
     for (const chat of deduped) {
-      const phone = chat.remote_jid?.split('@')[0] || ''
+      const phone = normalizePhone(chat.remote_jid?.split('@')[0] || '')
       if (nameMap[phone]) chat.contact_name = nameMap[phone]
     }
     res.writeHead(200); res.end(JSON.stringify({ chats: deduped || [] })); return
@@ -378,8 +408,39 @@ const server = http.createServer(async (req, res) => {
     const { data: dbAll } = await supabase.from('contacts').select('name,phone')
     const filtered = (dbAll || []).filter(c => c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x'))
     const seen = {}; const final = []
-    for (const c of filtered) { if (c.phone && !seen[c.phone]) { seen[c.phone] = true; final.push(c) } }
+    for (const c of filtered) { const np = normalizePhone(c.phone); if (np && !seen[np]) { seen[np] = true; final.push(c) } }
     res.writeHead(200); res.end(JSON.stringify({ contacts: final })); return
+  }
+
+  // /remove-lids
+  if (pathname === '/remove-lids') {
+    const { data: allC } = await supabase.from('contacts').select('id,name,phone')
+    const toRemove = (allC || []).filter(c => { const p = normalizePhone(c.phone || ''); return p.length >= 14 })
+    if (toRemove.length) { await supabase.from('contacts').delete().in('id', toRemove.map(c => c.id)) }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, removed: toRemove.length })); return
+  }
+
+  // /deduplicate-contacts
+  if (pathname === '/deduplicate-contacts') {
+    const { data: all } = await supabase.from('contacts').select('id,name,phone').order('created_at', { ascending: true })
+    const seen = {}; const toDelete = []
+    if (all) {
+      for (const c of all) {
+        const key = normalizePhone(c.phone) + '|' + ((c.name || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+        if (seen[key]) { toDelete.push(c.id) }
+        else { seen[key] = true }
+      }
+    }
+    if (toDelete.length) { await supabase.from('contacts').delete().in('id', toDelete) }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, removed: toDelete.length })); return
+  }
+
+  // /cleanup-chat-dups
+  if (pathname === '/cleanup-chat-dups') {
+    const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid').order('created_at', { ascending: true })
+    const seen = {}; let removed = 0
+    if (allChats) { for (const c of allChats) { const norm = normalizePhone(c.remote_jid?.split('@')[0] || ''); if (norm && seen[norm]) { await supabase.from('whatsapp_chats').delete().eq('id', c.id); removed++ } else if (norm) { seen[norm] = true } } }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, removed })); return
   }
 
   // /send-message
