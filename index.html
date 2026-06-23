@@ -77,6 +77,7 @@
             --opacity-color: 255, 255, 255;
             --icon-filter: invert(1);
             --bg-card: #1e293b;
+            --cursor-color: #ffffff;
         }
 
         [data-theme="light"] {
@@ -92,6 +93,7 @@
             --opacity-color: 0, 0, 0;
             --icon-filter: none;
             --bg-card: #ffffff;
+            --cursor-color: #6366f1;
         }
 
 
@@ -107,14 +109,31 @@
         }
 
         /* Custom cursor */
+        .custom-cursor {
+            position: fixed;
+            pointer-events: none;
+            z-index: 100000;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--cursor-color, #ffffff);
+            opacity: 0;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 8px rgba(0,0,0,0.2);
+            transition: opacity 0.15s;
+        }
+        .custom-cursor.trail {
+            position: fixed;
+            pointer-events: none;
+            z-index: 99999;
+            border-radius: 50%;
+            background: var(--cursor-color, #ffffff);
+            opacity: 0;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 4px var(--cursor-color, #ffffff);
+        }
         * {
-            cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='30' viewBox='0 0 24 30'%3E%3Cpath d='M2 2L18 18H11l-4 8-3-6H2z' fill='%236366f1' opacity='0.9'/%3E%3C/svg%3E") 2 2, auto !important;
-        }
-        *:active {
-            cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='30' viewBox='0 0 24 30'%3E%3Cpath d='M2 2L18 18H11l-4 8-3-6H2z' fill='%234f46e5' opacity='1'/%3E%3C/svg%3E") 2 2, grabbing !important;
-        }
-        button, a, input, textarea, select, [role=button], [onclick] {
-            cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='30' viewBox='0 0 24 30'%3E%3Cpath d='M2 2L18 18H11l-4 8-3-6H2z' fill='%236366f1' opacity='0.9'/%3E%3C/svg%3E") 2 2, pointer !important;
+            cursor: none !important;
         }
 
         .sidebar-nav .tab[data-tab="ia"] .svg-icon-robot {
@@ -123,6 +142,14 @@
             vertical-align: middle;
         }
         .sidebar-nav .tab[data-tab="ia"] .svg-icon-robot path {
+            fill: currentColor;
+        }
+        .svg-icon-robot {
+            width: 1.1em;
+            height: 1.1em;
+            vertical-align: middle;
+        }
+        .svg-icon-robot path {
             fill: currentColor;
         }
 
@@ -335,14 +362,17 @@
             gap: 6px;
             overflow: hidden;
             white-space: nowrap;
+            text-overflow: ellipsis;
         }
 
         .chart-row .cat-label .cat-icon {
             font-size: 0.9rem;
+            flex-shrink: 0;
         }
 
         .chart-row .cat-bar-track {
             flex: 1;
+            min-width: 60px;
             height: 26px;
             background: rgba(var(--opacity-color), 0.03);
             border-radius: 6px;
@@ -365,7 +395,8 @@
             transform: translateY(-50%);
             font-size: 0.7rem;
             font-weight: 600;
-            color: rgba(var(--opacity-color), 0.9);
+            color: #fff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.3);
         }
 
         .chart-row .cat-pct {
@@ -569,9 +600,9 @@
             justify-content: center;
             font-size: 1rem;
             flex-shrink: 0;
-            background: hsla(var(--secondary-h), var(--secondary-s), var(--secondary-l), 0.1);
-            border: 1px solid hsla(var(--secondary-h), var(--secondary-s), var(--secondary-l), 0.25);
-            color: var(--secondary);
+            background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.1);
+            border: 1px solid hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.25);
+            color: var(--accent);
         }
 
         .cat-header .cat-info {
@@ -990,10 +1021,11 @@
             right: 0;
             bottom: 0;
             background: rgba(0, 0, 0, 0.85);
-            z-index: 100;
+            z-index: 1000;
             justify-content: center;
-            align-items: center;
+            align-items: safe center;
             padding: 20px;
+            overflow-y: auto;
         }
 
         .modal-overlay.visible {
@@ -1001,12 +1033,14 @@
         }
 
         .modal {
-            background: var(--surface);
+            background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 20px;
             padding: 28px;
             width: 100%;
             max-width: 440px;
+            max-height: calc(100dvh - 40px);
+            overflow-y: auto;
             box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
         }
 
@@ -1215,7 +1249,7 @@
             z-index: 100;
             width: 260px;
             min-width: 260px;
-            background: var(--surface);
+            background: var(--bg-card);
             border-right: 1px solid var(--border);
             border-radius: 0;
             padding: 0;
@@ -1231,7 +1265,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 14px 12px 8px 14px;
+            padding: 8px 12px 8px 14px;
             flex-shrink: 0;
         }
 
@@ -1240,7 +1274,9 @@
             font-size: 1.15rem;
             letter-spacing: 0.08em;
             color: var(--text);
-
+            flex-direction: row;
+            align-items: center;
+            gap: 12px;
         }
 
         @media (max-width: 900px) {
@@ -1255,7 +1291,7 @@
 
             .sidebar .sidebar-brand {
                 justify-content: flex-start;
-                padding: 14px 16px 8px;
+                padding: 8px 16px 8px;
             }
 
             .sidebar .sidebar-nav .tab span {
@@ -1306,44 +1342,104 @@
             .app-layout {
                 min-height: 0;
                 position: relative;
-                padding-left: 0;
+                padding-left: 60px;
             }
 
             .sidebar {
                 position: fixed;
                 top: 0;
-                left: -240px;
-                width: 220px !important;
-                min-width: 220px !important;
+                left: 0;
+                width: 60px !important;
+                min-width: 60px !important;
                 height: 100vh;
                 max-height: 100vh;
                 border-radius: 0 16px 16px 0;
                 z-index: 200;
-                transition: left 0.3s ease;
+                transition: width 0.3s ease;
                 padding-top: 12px;
                 display: flex !important;
+                background: var(--bg-card);
+                border-right: 1px solid var(--border);
             }
 
             .sidebar.open {
-                left: 0;
+                width: 220px !important;
             }
 
             .sidebar .sidebar-toggle {
-                display: none !important;
+                background: none;
+                border: none;
+                color: rgba(var(--opacity-color), 0.5);
+                cursor: pointer;
+                font-size: 1.6rem;
+                padding: 0;
+                border-radius: 4px;
+                transition: color 0.15s;
+                font-family: inherit;
+                display: block !important;
+                margin: 0 auto;
+                line-height: 1;
+                position: relative;
+                width: 28px;
+                height: 28px;
+            }
+            .sidebar .sidebar-toggle .si-hamburger,
+            .sidebar .sidebar-toggle .si-arrow {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                transform: translate(-50%, -50%);
+                transition: opacity 0.2s ease, transform 0.2s ease;
+                display: block;
+            }
+            .sidebar .sidebar-toggle .si-arrow { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            .sidebar.open .sidebar-toggle .si-hamburger { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            .sidebar.open .sidebar-toggle .si-arrow { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            .sidebar .sidebar-toggle:hover {
+                background: rgba(var(--opacity-color), 0.1);
+                color: var(--text);
             }
 
             .sidebar .sidebar-brand {
-                display: none !important;
+                display: flex !important;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                padding: 8px 0 4px;
+                position: relative;
             }
+            .sidebar .sidebar-brand .logo-full { display: none; }
+            .sidebar .sidebar-brand .logo-icon { display: block; width: 28px; height: 28px; }
+            .sidebar.open .sidebar-brand { flex-direction: row; justify-content: space-between; padding: 14px 12px 8px 14px; }
+            .sidebar.open .sidebar-brand .logo { flex-direction: column; align-items: flex-start; gap: 2px; }
+            .sidebar.open .sidebar-brand .logo-icon { width: auto; height: auto; }
+            .sidebar.open .sidebar-brand .logo-full { display: inline; }
+            .sidebar.open .sidebar-toggle { margin: 0; position: static; transform: none; }
 
-            .sidebar-nav .tab span {
-                display: inline !important;
+            .sidebar .sidebar-nav .tab span { display: none; }
+            .sidebar.open .sidebar-nav .tab span { display: inline; }
+
+            .sidebar .sidebar-nav .tab {
+                justify-content: center;
+                width: 100%;
+                height: 44px;
+                padding: 0;
+                font-size: 1.2rem;
+                border-radius: 12px;
             }
-
-            .sidebar-nav .tab {
+            .sidebar.open .sidebar-nav .tab {
                 justify-content: flex-start;
                 padding: 11px 14px;
-                font-size: 0.8rem;
+                font-size: 0.85rem;
+                height: auto;
+                border-radius: 9999px;
+            }
+
+            .sidebar .sidebar-nav {
+                padding: 24px 8px;
+            }
+            .sidebar.open .sidebar-nav {
+                padding: 4px 8px 8px;
             }
 
             #sidebarBackdrop {
@@ -1359,7 +1455,7 @@
             }
 
             #hamburgerBtn {
-                display: flex !important;
+                display: none !important;
             }
 
             #hamburgerBtn:hover {
@@ -1435,7 +1531,7 @@
         .sidebar.closed .sidebar-brand {
             position: relative;
             justify-content: flex-start;
-            padding: 16px 0 10px 14px;
+            padding: 10px 0 8px 14px;
         }
 
         .sidebar.closed .sidebar-toggle {
@@ -1467,7 +1563,10 @@
             border-radius: 6px;
             transition: all 0.15s;
             font-family: inherit;
+            position: relative;
         }
+        .sidebar-toggle .si-hamburger { display: none; }
+        .sidebar-toggle .si-arrow { display: inline; }
 
         .sidebar-toggle:hover {
             background: rgba(var(--opacity-color), 0.1);
@@ -1676,10 +1775,14 @@
         }
 
         /* ===== EMPRESAS TAB ===== */
-        #tabEmpresas.active {
+        #tabEmpresas.active,
+        #tabUsuarios.active {
             display: flex;
             flex-direction: column;
             gap: 16px;
+        }
+        #usrList {
+            margin-top: 8px;
         }
 
         .emp-header {
@@ -1844,6 +1947,14 @@
         }
 
         .users-table .role-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .role-badge {
             display: inline-block;
             padding: 2px 8px;
             border-radius: 6px;
@@ -2025,7 +2136,7 @@
         .login-box {
             position: relative;
             z-index: 10;
-            background: var(--surface);
+            background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 24px;
             padding: 48px 40px;
@@ -2569,6 +2680,10 @@
             gap: 8px;
             min-height: 60px;
         }
+
+        .kanban-col-header { cursor: grab; }
+        .kanban-col-header:active { cursor: grabbing; }
+        .kanban-col.col-drag-indicator { border-left: 3px solid var(--accent); }
 
         .kanban-col-body.drag-over {
             background: hsla(var(--accent-h), var(--accent-s), 53%, 0.12);
@@ -3156,7 +3271,7 @@
         }
 
         .chat-config-panel {
-            background: var(--surface);
+            background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 16px;
             padding: 20px;
@@ -3334,7 +3449,7 @@
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 12px;
-            padding: 16px;
+            padding: 20px;
         }
 
         .fin-chart-label {
@@ -3355,8 +3470,8 @@
             display: flex;
             flex-direction: column;
             align-items: stretch;
-            gap: 8px;
-            padding: 12px 8px 8px;
+            gap: 12px;
+            padding: 16px 12px 12px;
         }
 
         /* Mobile filter button — hidden on desktop */
@@ -3411,17 +3526,24 @@
             background: var(--surface2);
             border: 1px solid var(--border);
             border-radius: 10px;
-            padding: 10px 12px;
+            padding: 12px 14px;
         }
 
         .fin-filtros-dropdown.open {
-            display: block;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .fin-filtros-dropdown .fin-filtro-btn {
+            width: 100%;
+            text-align: center;
         }
 
         .fin-filtros-inline {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 14px;
             flex-wrap: wrap;
         }
 
@@ -3451,8 +3573,8 @@
             }
 
             .fin-filtros {
-                padding: 8px 4px 4px;
-                gap: 4px;
+                padding: 12px 6px 6px;
+                gap: 8px;
             }
         }
 
@@ -3460,10 +3582,10 @@
             background: var(--surface);
             border: 1px solid var(--border);
             color: var(--text-dim);
-            padding: 6px 14px;
-            border-radius: 8px;
+            padding: 4px 10px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             transition: 0.2s;
         }
 
@@ -3523,7 +3645,7 @@
             top: calc(100% + 4px);
             left: 0;
             z-index: 100;
-            background: var(--surface);
+            background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 12px;
             padding: 10px;
@@ -4047,7 +4169,8 @@
             padding-right: 8px;
             font-size: 0.65rem;
             font-weight: 700;
-            color: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.3);
             min-width: 30px;
         }
 
@@ -4680,13 +4803,13 @@
         }
 
         .crm-modal-box {
-            background: var(--surface);
+            background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 16px;
             padding: 24px;
             width: 90%;
             max-width: 480px;
-            max-height: 90vh;
+            max-height: calc(100dvh - 40px);
             overflow-y: auto;
         }
 
@@ -4829,11 +4952,12 @@
 
             .chart-row .cat-label {
                 width: 110px;
-                font-size: 0.9rem;
+                font-size: 0.85rem;
             }
 
             .chart-row .cat-bar-fill .bar-count {
-                display: inline;
+                right: 6px;
+                font-size: 0.65rem;
             }
 
             .chart-row .cat-impact {
@@ -4861,16 +4985,17 @@
             }
 
             .fin-chart-card {
-                padding: 10px;
+                padding: 14px;
             }
 
             .fin-filtros {
-                gap: 6px;
+                gap: 10px;
             }
 
             .fin-filtro-btn {
-                height: 36px;
-                font-size: 0.78rem;
+                height: 32px;
+                font-size: 0.72rem;
+                padding: 3px 8px;
             }
 
             .crm-toolbar {
@@ -4931,10 +5056,21 @@
                 flex: 1;
             }
 
+            .chat-header {
+                gap: 8px;
+                flex-wrap: wrap;
+                padding: 10px 14px;
+            }
+            .chat-header h3 {
+                font-size: 0.78rem;
+            }
             .chat-header-btn {
-                padding: 12px 18px;
-                font-size: 1rem;
-                min-width: 50px;
+                padding: 6px 10px;
+                font-size: 0.72rem;
+                min-width: 32px;
+            }
+            .chat-header-btn i {
+                font-size: 0.85rem;
             }
 
             .kb-presets {
@@ -5160,6 +5296,9 @@
                 white-space: nowrap;
             }
 
+            .chart-grid {
+                overflow-x: auto;
+            }
             .chart-card {
                 padding: 10px;
                 border-radius: 12px;
@@ -5170,12 +5309,17 @@
             }
 
             .chart-row .cat-label {
-                width: 80px;
+                width: 90px;
+                font-size: 0.78rem;
+                gap: 4px;
+            }
+            .chart-row .cat-label .cat-icon {
                 font-size: 0.8rem;
             }
 
             .chart-row .cat-bar-track {
                 height: 24px;
+                min-width: 40px;
             }
 
             .chart-row .cat-bar-fill {
@@ -5183,12 +5327,13 @@
             }
 
             .chart-row .cat-bar-fill .bar-count {
-                display: inline;
+                right: 4px;
+                font-size: 0.6rem;
             }
 
             .chart-row .cat-pct {
-                width: 36px;
-                font-size: 0.8rem;
+                width: 32px;
+                font-size: 0.75rem;
             }
 
             .cat-item {
@@ -5231,13 +5376,13 @@
             }
 
             .fin-chart-card {
-                padding: 6px;
+                padding: 10px;
                 border-radius: 8px;
             }
 
             .fin-filtro-btn {
-                font-size: 0.82rem;
-                padding: 8px 14px;
+                font-size: 0.78rem;
+                padding: 5px 10px;
             }
 
             .fin-line-chart {
@@ -5323,7 +5468,8 @@
             }
 
             .modal-overlay {
-                padding: 10px;
+                padding: 60px 10px 10px;
+                align-items: flex-start;
             }
 
             .modal {
@@ -5335,6 +5481,26 @@
             .crm-modal-box {
                 padding: 18px;
                 max-width: 100% !important;
+            }
+
+            .modal,
+            .crm-modal-box {
+                max-height: calc(100dvh - 80px);
+                overflow-y: auto;
+            }
+
+            .emp-perms {
+                max-height: none;
+            }
+
+            .emp-perm-row {
+                flex-wrap: wrap;
+                gap: 4px 8px;
+            }
+
+            .emp-perm-row .perm-toggles {
+                flex-wrap: wrap;
+                gap: 2px 6px;
             }
 
             .login-box {
@@ -5354,11 +5520,44 @@
             }
 
             .chat-header-btn {
-                padding: 14px 20px;
-                font-size: 1.05rem;
-                min-width: 54px;
+                padding: 5px 8px;
+                font-size: 0.68rem;
+                min-width: 28px;
+            }
+            .chat-header-btn i {
+                font-size: 0.8rem;
+            }
+            .chat-header h3 {
+                font-size: 0.72rem;
+            }
+            .chat-header {
+                padding: 8px 10px;
+                gap: 4px;
+            }
+            .chat-input-area {
+                padding: 8px 10px;
+                gap: 6px;
+            }
+            .chat-input-area textarea {
+                font-size: 0.8rem;
+                padding: 8px 10px;
+            }
+            .chat-input-area button {
+                padding: 8px 14px;
+                font-size: 0.75rem;
             }
 
+            .chat-messages {
+                padding: 10px 12px;
+                gap: 8px;
+            }
+            .chat-empty {
+                padding: 20px 14px;
+                font-size: 0.78rem;
+            }
+            .chat-empty .ce-icon {
+                font-size: 1.8rem;
+            }
             .chat-container {
                 height: calc(100vh - 150px);
             }
@@ -5866,6 +6065,32 @@
             flex: 1;
             overflow-y: auto;
             padding: 6px;
+        }
+
+        .chat-sidebar-footer {
+            flex-shrink: 0;
+            border-top: 1px solid var(--border);
+            padding: 8px 10px;
+        }
+        .chat-sidebar-footer button {
+            width: 100%;
+            background: rgba(var(--opacity-color), 0.04);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            border-radius: 8px;
+            padding: 7px 12px;
+            font-size: 0.72rem;
+            cursor: pointer;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .chat-sidebar-footer button:hover {
+            border-color: var(--accent);
+            color: var(--text);
         }
 
         .chat-sidebar-item {
@@ -6929,6 +7154,15 @@
             color: var(--accent);
         }
 
+        .icon-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+        .icon-picker .icon-opt {
+            width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+            border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
+            cursor: pointer; font-size: 1rem; color: var(--text-dim); transition: all 0.15s;
+        }
+        .icon-picker .icon-opt:hover { border-color: var(--accent); color: var(--text); background: hsla(var(--accent-h),var(--accent-s),55%,0.08); }
+        .icon-picker .icon-opt.selected { border-color: var(--accent); color: var(--accent); background: hsla(var(--accent-h),var(--accent-s),55%,0.12); }
+
         .fi {
             display: inline-flex;
             align-items: center;
@@ -6966,7 +7200,7 @@
             <div class="header">
                 <div class="header-left">
                     <button id="hamburgerBtn" onclick="mobileToggleSidebar();this.blur()"
-                        style="width:48px;height:48px;border-radius:12px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:1.5rem;transition:all 0.2s;display:none;align-items:center;justify-content:center;flex-shrink:0">☰</button>
+                        style="width:32px;height:32px;border-radius:6px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.85rem;transition:all 0.15s;display:none;align-items:center;justify-content:center;flex-shrink:0">◀</button>
                     <div class="brand desktop-hidden">
                         <div class="logo" style="background: transparent; padding: 0; box-shadow: none;">
                             <svg class="logo-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 32"
@@ -6999,25 +7233,18 @@
             <div class="app-layout">
                 <div class="sidebar" id="sidebar">
                     <div class="sidebar-brand">
-                        <div class="logo" style="background: transparent; padding: 0; box-shadow: none;">
-                            <svg class="logo-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 32"
-                                style="height: 32px; width: auto;">
-                                <path d="M4 8 L14 26 L26 6" fill="none" stroke="#6366f1" stroke-width="4.5"
-                                    stroke-linecap="round" stroke-linejoin="round" />
-                                <path d="M16 6 L26 6 L26 16" fill="none" stroke="#6366f1" stroke-width="4.5"
-                                    stroke-linecap="round" stroke-linejoin="round" />
-                                <text x="36" y="24" font-family="'Outfit', system-ui, sans-serif" font-weight="800"
-                                    font-size="24" fill="currentColor" letter-spacing="0.5">Veltris</text>
-                            </svg>
+                        <div class="logo" style="background: transparent; padding: 0; box-shadow: none; display:flex;">
                             <svg class="logo-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"
-                                style="height: 32px; width: auto;">
+                                style="height: 28px; width: auto; flex-shrink:0; margin-top:-2px;">
                                 <path d="M5 10 L15 28 L27 8" fill="none" stroke="#6366f1" stroke-width="4.5"
                                     stroke-linecap="round" stroke-linejoin="round" />
                                 <path d="M17 8 L27 8 L27 18" fill="none" stroke="#6366f1" stroke-width="4.5"
                                     stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
+                            <span class="logo-full" id="sidebarCompanyName"
+                                style="font-weight:800;font-size:1.15rem;letter-spacing:0.08em;color:var(--text)">Veltris</span>
                         </div>
-                        <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">◀</button>
+                        <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()"><span class="si-hamburger">☰</span><span class="si-arrow">◀</span></button>
                     </div>
                     <nav class="sidebar-nav">
                         <button class="tab active" data-tab="dashboard"><i class="fi fi-rr-clipboard-list"></i>
@@ -7026,7 +7253,7 @@
                             <span>Conteúdos</span></button>
                         <button class="tab" data-tab="financeiro"><i class="fi fi-rr-sack-dollar"></i>
                             <span>Financeiro</span></button>
-                        <button class="tab" data-tab="ia"><svg class="svg-icon-robot" viewBox="0 0 24 24"><path d="m21,23c0,.553-.448,1-1,1s-1-.447-1-1c0-2.206-1.794-4-4-4h-6c-2.206,0-4,1.794-4,4,0,.553-.448,1-1,1s-1-.447-1-1c0-3.309,2.691-6,6-6h6c3.309,0,6,2.691,6,6Zm1-15.5v2c0,.827-.673,1.5-1.5,1.5h-.5c0,2.206-1.794,4-4,4h-8c-2.206,0-4-1.794-4-4h-.5c-.827,0-1.5-.673-1.5-1.5v-2c0-.827.673-1.5,1.5-1.5h.5c0-2.206,1.794-4,4-4h3v-1c0-.553.448-1,1-1s1,.447,1,1v1h3c2.206,0,4,1.794,4,4h.5c.827,0,1.5.673,1.5,1.5Zm-4-1.5c0-1.103-.897-2-2-2h-8c-1.103,0-2,.897-2,2v5c0,1.103.897,2,2,2h8c1.103,0,2-.897,2-2v-5Zm-8.5,1c-.828,0-1.5.672-1.5,1.5s.672,1.5,1.5,1.5,1.5-.672,1.5-1.5-.672-1.5-1.5-1.5Zm5,0c-.828,0-1.5.672-1.5,1.5s.672,1.5,1.5,1.5,1.5-.672,1.5-1.5-.672-1.5-1.5-1.5Z"/></svg> <span>IA
+                        <button class="tab" data-tab="ia"><svg class="svg-icon-robot" viewBox="0 0 24 24"><path fill="currentColor" d="m21,23c0,.553-.448,1-1,1s-1-.447-1-1c0-2.206-1.794-4-4-4h-6c-2.206,0-4,1.794-4,4,0,.553-.448,1-1,1s-1-.447-1-1c0-3.309,2.691-6,6-6h6c3.309,0,6,2.691,6,6Zm1-15.5v2c0,.827-.673,1.5-1.5,1.5h-.5c0,2.206-1.794,4-4,4h-8c-2.206,0-4-1.794-4-4h-.5c-.827,0-1.5-.673-1.5-1.5v-2c0-.827.673-1.5,1.5-1.5h.5c0-2.206,1.794-4,4-4h3v-1c0-.553.448-1,1-1s1,.447,1,1v1h3c2.206,0,4,1.794,4,4h.5c.827,0,1.5.673,1.5,1.5Zm-4-1.5c0-1.103-.897-2-2-2h-8c-1.103,0-2,.897-2,2v5c0,1.103.897,2,2,2h8c1.103,0,2-.897,2-2v-5Zm-8.5,1c-.828,0-1.5.672-1.5,1.5s.672,1.5,1.5,1.5,1.5-.672,1.5-1.5-.672-1.5-1.5-1.5Zm5,0c-.828,0-1.5.672-1.5,1.5s.672,1.5,1.5,1.5,1.5-.672,1.5-1.5-.672-1.5-1.5-1.5Z"/></svg> <span>IA
                                 Assistente</span></button>
                         <button class="tab" data-tab="crm"><i class="fi fi-rr-chart-histogram"></i>
                             <span>Leads</span></button>
@@ -7038,7 +7265,7 @@
                             <span>WhatsApp</span></button>
                         <button class="tab" data-tab="empresas"><i class="fi fi-rr-building"></i>
                             <span>Empresas</span></button>
-                        <button class="tab" data-tab="usuarios" id="sidebarUsuariosBtn" style="display:none"><i class="fi fi-rr-users"></i>
+                        <button class="tab" data-tab="usuarios" id="sidebarUsuariosBtn"><i class="fi fi-rr-users"></i>
                             <span>Usuários</span></button>
                         <div style="flex:1"></div>
                         <button class="tab" id="sidebarSettingsBtn" onclick="openSettings()"
@@ -7266,7 +7493,7 @@
                                             <button class="fin-filtro-btn" data-period="todo"
                                                 onclick="setFinFilter('todo')">Todo</button>
                                             <div
-                                                style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;padding-top:8px;border-top:1px solid var(--border)">
+                                                style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px;padding-top:10px;border-top:1px solid var(--border)">
                                                 <div class="fin-dp" id="dpStart">
                                                     <div class="fin-dp-trigger" onclick="dpToggle('dpStart')">
                                                         <span class="fin-dp-val" id="dpStartVal">Início</span>
@@ -7398,7 +7625,7 @@
                                         </div>
                                     </div>
                                     <div class="fin-line-wrap">
-                                        <svg class="fin-line-chart" id="finLineChart" viewBox="0 0 500 200"
+                                        <svg class="fin-line-chart" id="finLineChart" viewBox="0 0 500 280"
                                             preserveAspectRatio="xMidYMid meet"></svg>
                                     </div>
                                 </div>
@@ -7426,20 +7653,22 @@
                                         <button onclick="newIAConv()">+ Nova</button>
                                     </div>
                                     <div class="chat-sidebar-list" id="iaChatSidebarList"></div>
+                                    <div class="chat-sidebar-footer">
+                                        <button onclick="toggleChatConfig()" title="Configurar predefinições">
+                                            <i class="fi fi-rr-settings"></i> Predefinições
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="chat-main">
                                     <div class="chat-header">
                                         <div style="display:flex;align-items:center;gap:6px">
                                             <button class="chat-sidebar-toggle" id="iaSidebarToggle"
                                                 onclick="toggleIAHistory()" title="Histórico de conversas">☰</button>
-                                            <h3><img src="user-robot.svg" class="svg-icon"> Veltris AI — CEO/CMO/COO
+                                            <h3><img src="user-robot.svg" class="svg-icon"> <span id="iaChatCompanyName">Veltris</span> IA
                                             </h3>
                                         </div>
                                         <div style="display:flex;align-items:center;gap:6px">
-                                            <div class="ch-status"><span class="dot"></span> Online</div>
-                                            <button onclick="toggleChatConfig()" class="chat-header-btn"
-                                                title="Configurar predefinições"><i
-                                                    class="fi fi-rr-settings"></i></button>
+                                            <div class="ch-status"><span class="dot"></span></div>
                                             <button onclick="clearChat()" class="chat-header-btn chat-clear-btn">Limpar</button>
                                         </div>
                                     </div>
@@ -7972,6 +8201,12 @@
                                 Clientes</button>
                             <button class="wpp-tab-btn" data-wpp-tab="agenda"><i class="fi fi-rr-calendar"></i>
                                 Agenda</button>
+                            <button class="wpp-tab-btn" data-wpp-tab="metricas"><i class="fi fi-rr-chart-line-up"></i>
+                                Métricas</button>
+                            <button class="wpp-tab-btn" data-wpp-tab="disparos"><i class="fi fi-rr-send"></i><i class="fi fi-rr-phone" style="margin-left:-4px"></i>
+                                Disparos</button>
+                            <button class="wpp-tab-btn" data-wpp-tab="tags"><i class="fi fi-rr-tags"></i>
+                                Tags</button>
                         </div>
 
                         <!-- Tab contents -->
@@ -7985,6 +8220,15 @@
                         </div>
                         <div class="wpp-tab-content" id="wppTabAgenda" style="flex:1">
                             <div id="wppAgenda"></div>
+                        </div>
+                        <div class="wpp-tab-content" id="wppTabMetricas" style="flex:1">
+                            <div id="wppMetricas"></div>
+                        </div>
+                        <div class="wpp-tab-content" id="wppTabDisparos" style="flex:1">
+                            <div id="wppDisparos"></div>
+                        </div>
+                        <div class="wpp-tab-content" id="wppTabTags" style="flex:1">
+                            <div id="wppTags"></div>
                         </div>
                     </div>
 
@@ -8048,14 +8292,14 @@
 
                 <!-- USUARIO FORM MODAL -->
                 <div class="modal-overlay" id="usrFormOverlay">
-                    <div class="modal" style="max-width:420px">
+                    <div class="modal" style="max-width:560px">
                         <h3 id="usrFormTitle">Novo Usuário</h3>
                         <div class="settings-field">
                             <label>Nome</label>
                             <input type="text" id="usrFormName" placeholder="Nome do usuário">
                         </div>
                         <div class="settings-field">
-                            <label>Senha</label>
+                            <label>Senha Temporária</label>
                             <input type="password" id="usrFormPass" placeholder="senha de acesso">
                             <div
                                 style="margin-top:6px;display:flex;align-items:center;gap:6px;font-size:0.75rem;color:var(--text-muted)">
@@ -8068,10 +8312,34 @@
                             </div>
                         </div>
                         <div class="settings-field">
+                            <label>Cargo</label>
+                            <div class="cs-wrap">
+                                <div class="cs-trigger" id="usrRoleTrigger" onclick="toggleUsrRoleDropdown()">
+                                    <span id="usrRoleSelected" style="color:var(--text-dim)">Selecionar...</span>
+                                    <span class="cs-arrow" id="usrRoleArrow">▾</span>
+                                </div>
+                                <div class="cs-drop" id="usrRoleDrop"></div>
+                                <input type="hidden" id="usrFormRole" value="colaborador">
+                            </div>
+                        </div>
+                        <div class="settings-field">
+                            <label>Setor</label>
+                            <div class="cs-wrap">
+                                <div class="cs-trigger" id="usrSectorTrigger" onclick="toggleUsrSectorDropdown()">
+                                    <span id="usrSectorSelected" style="color:var(--text-dim)">-- Selecione --</span>
+                                    <span class="cs-arrow" id="usrSectorArrow">▾</span>
+                                </div>
+                                <div class="cs-drop" id="usrSectorDrop"></div>
+                                <input type="hidden" id="usrFormSector" value="">
+                            </div>
+                        </div>
+                        <div class="settings-field">
                             <label>Ativo</label>
                             <label class="toggle-wrap"><input type="checkbox" id="usrFormActive" checked><span
                                     class="toggle-slider"></span></label>
                         </div>
+                        <div style="margin:16px 0 8px;font-size:0.85rem;font-weight:600;color:var(--text)">Abas com Acesso</div>
+                        <div class="emp-perms" id="usrFormPerms"></div>
                         <div style="display:flex;gap:8px;margin-top:16px">
                             <button class="btn btn-primary" onclick="usrSave()" style="flex:1">Salvar</button>
                             <button class="btn btn-outline" onclick="usrCloseForm()">Cancelar</button>
@@ -8300,21 +8568,33 @@
                 </div>
                 <div class="field">
                     <label>Prioridade</label>
-                    <select id="editPrioridade"
-                        style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.85rem;font-family:inherit">
-                        <option value="alta">Alta</option>
-                        <option value="media" selected>Média</option>
-                        <option value="baixa">Baixa</option>
-                    </select>
+                    <div class="cs-wrap">
+                        <div class="cs-trigger" id="editPriTrigger" onclick="toggleEditPriDropdown()">
+                            <span id="editPriSelected">Média</span>
+                            <span class="cs-arrow" id="editPriArrow">▾</span>
+                        </div>
+                        <div class="cs-drop" id="editPriDrop">
+                            <div class="cs-opt" data-value="alta" onclick="selectEditPri('alta')">Alta</div>
+                            <div class="cs-opt selected" data-value="media" onclick="selectEditPri('media')">Média</div>
+                            <div class="cs-opt" data-value="baixa" onclick="selectEditPri('baixa')">Baixa</div>
+                        </div>
+                        <input type="hidden" id="editPrioridade" value="media">
+                    </div>
                 </div>
                 <div class="field">
                     <label>Prazo</label>
-                    <select id="editPrazo"
-                        style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.85rem;font-family:inherit">
-                        <option value="curto">Curto (dias)</option>
-                        <option value="medio" selected>Médio (semanas)</option>
-                        <option value="longo">Longo (meses)</option>
-                    </select>
+                    <div class="cs-wrap">
+                        <div class="cs-trigger" id="editPrazoTrigger" onclick="toggleEditPrazoDropdown()">
+                            <span id="editPrazoSelected">Médio (semanas)</span>
+                            <span class="cs-arrow" id="editPrazoArrow">▾</span>
+                        </div>
+                        <div class="cs-drop" id="editPrazoDrop">
+                            <div class="cs-opt" data-value="curto" onclick="selectEditPrazo('curto')">Curto (dias)</div>
+                            <div class="cs-opt selected" data-value="medio" onclick="selectEditPrazo('medio')">Médio (semanas)</div>
+                            <div class="cs-opt" data-value="longo" onclick="selectEditPrazo('longo')">Longo (meses)</div>
+                        </div>
+                        <input type="hidden" id="editPrazo" value="medio">
+                    </div>
                 </div>
                 <input type="hidden" id="editItemId" value="" />
                 <div class="btn-row">
@@ -8326,18 +8606,41 @@
 
         <!-- PROMPT MODAL (para nomear colunas) -->
         <div class="modal-overlay" id="promptOverlay">
-            <div class="modal" style="max-width:360px">
+            <div class="modal" style="max-width:380px">
                 <h3 id="promptTitle">Nome da coluna</h3>
                 <div class="field">
                     <input type="text" id="promptInput" placeholder="Ex: Em Andamento" maxlength="40"
                         style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.85rem;font-family:inherit" />
+                </div>
+                <div style="margin-bottom:12px">
+                    <label style="font-size:0.7rem;color:var(--text-muted);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Ícone</label>
+                    <div class="icon-picker" id="iconPicker">
+                        <div class="icon-opt selected" data-icon="fi-rr-memo"><i class="fi fi-rr-memo"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-bulb"><i class="fi fi-rr-bulb"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-rocket"><i class="fi fi-rr-rocket"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-star"><i class="fi fi-rr-star"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-wrench-simple"><i class="fi fi-rr-wrench-simple"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-check-circle"><i class="fi fi-rr-check-circle"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-heart"><i class="fi fi-rr-heart"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-flag"><i class="fi fi-rr-flag"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-target"><i class="fi fi-rr-target"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-chart-line-up"><i class="fi fi-rr-chart-line-up"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-users"><i class="fi fi-rr-users"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-sack-dollar"><i class="fi fi-rr-sack-dollar"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-settings"><i class="fi fi-rr-settings"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-document"><i class="fi fi-rr-document"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-comment-alt"><i class="fi fi-rr-comment-alt"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-calendar"><i class="fi fi-rr-calendar"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-clock"><i class="fi fi-rr-clock"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-crown"><i class="fi fi-rr-crown"></i></div>
+                    </div>
                 </div>
                 <div class="btn-row">
                     <button class="btn btn-cancel"
                         onclick="document.getElementById('promptOverlay').style.display='none'"
                         style="flex:1">Cancelar</button>
                     <button class="btn btn-save"
-                        onclick="(function(){var v=document.getElementById('promptInput').value;if(!v||!v.trim())return;if(window._kanbanMode==='add'){kanbanData.push({id:'col-'+Date.now(),title:v.trim(),cards:[]})}else if(window._kanbanMode==='rename'&&window._kanbanIdx>=0){kanbanData[window._kanbanIdx].title=v.trim()}saveKanban();renderKanban();document.getElementById('promptOverlay').style.display='none'})()"
+                        onclick="(function(){var v=document.getElementById('promptInput').value;if(!v||!v.trim())return;var selIcon=document.querySelector('#iconPicker .icon-opt.selected');var icon=selIcon?selIcon.dataset.icon:'fi-rr-memo';if(window._kanbanMode==='add'){kanbanData.push({id:'col-'+Date.now(),icon:icon,title:v.trim(),cards:[]})}else if(window._kanbanMode==='rename'&&window._kanbanIdx>=0){kanbanData[window._kanbanIdx].title=v.trim();kanbanData[window._kanbanIdx].icon=icon}saveKanban();renderKanban();document.getElementById('promptOverlay').style.display='none'})()"
                         style="flex:1">Confirmar</button>
                 </div>
             </div>
@@ -8355,6 +8658,48 @@
                         onclick="document.getElementById('confirmOverlay').style.display='none'"
                         style="flex:1">Cancelar</button>
                     <button class="btn btn-save" id="confirmOkBtn" style="flex:1">Confirmar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- COMPANY DESCRIPTION OVERLAY (first login) -->
+        <div class="modal-overlay" id="companyDescOverlay">
+            <div class="modal" style="max-width:520px">
+                <h3><i class="fi fi-rr-building"></i> Sobre sua empresa</h3>
+                <p style="color:var(--text-dim);font-size:0.82rem;margin-bottom:16px;line-height:1.5">
+                    Conte um pouco sobre o ramo de atuação da sua empresa e um breve resumo do negócio.
+                    A IA da plataforma usará essas informações para gerar sugestões e análises mais relevantes para você.
+                </p>
+                <div class="settings-field">
+                    <label>Ramo de atuação</label>
+                    <input type="text" id="companyDescSector" placeholder="Ex: Marketing digital, E-commerce, Consultoria...">
+                </div>
+                <div class="settings-field">
+                    <label>Descrição da empresa</label>
+                    <textarea id="companyDescText" placeholder="Ex: Somos uma agência de marketing digital especializada em growth para startups, com foco em performance e resultados mensuráveis..."
+                        style="width:100%;min-height:120px;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.85rem;font-family:inherit;outline:none;resize:vertical;line-height:1.5"></textarea>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button class="btn btn-primary" onclick="saveCompanyDescription()" style="flex:1">Salvar</button>
+                    <button class="btn btn-outline" onclick="skipCompanyDescription()">Pular</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SKIP COMPANY DESC CONFIRM -->
+        <div class="modal-overlay" id="skipDescOverlay">
+            <div class="modal" style="max-width:420px">
+                <h3><i class="fi fi-rr-exclamation"></i> Pular descrição?</h3>
+                <p style="color:var(--text-dim);font-size:0.85rem;line-height:1.5;margin-bottom:12px">
+                    Se pular agora, a IA não terá informações sobre sua empresa e poderá gerar sugestões genéricas.
+                    Você pode preencher depois em <strong>Configurações</strong>.
+                </p>
+                <div id="skipDescTimerBar" style="width:100%;height:4px;background:var(--surface);border-radius:100px;margin-bottom:14px;overflow:hidden">
+                    <div id="skipDescTimerFill" style="height:100%;width:100%;background:var(--accent);border-radius:100px;transition:width 0.1s linear"></div>
+                </div>
+                <div class="btn-row">
+                    <button class="btn btn-primary" id="skipDescConfirmBtn" onclick="confirmSkipDescription()" disabled style="flex:1;opacity:0.5">Aguarde 3s...</button>
+                    <button class="btn btn-outline" onclick="document.getElementById('skipDescOverlay').style.display='none'" style="flex:1">Voltar</button>
                 </div>
             </div>
         </div>
@@ -8429,19 +8774,29 @@
                     </div>
                     <div class="settings-field">
                         <label>Modelo de IA (sistema)</label>
-                        <select id="modelSelect">
-                            <option value="google/gemma-4-31b-it:free" selected>Gemma 4 31B IT Free</option>
-                            <option value="openai/gpt-oss-120b:free">Gpt</option>
-                            <option value="deepseek/deepseek-chat">DeepSeek V3</option>
-                            <option value="deepseek/deepseek-v4-flash:free">DeepSeek V4 Flash Free</option>
-                            <option value="deepseek/deepseek-r1">DeepSeek R1</option>
-                            <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-                            <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
-                            <option value="google/gemini-2.5-flash:free">Gemini 2.5 Flash</option>
-                            <option value="google/gemma-4-26b-a4b-it:free">Gemma 4 26B A4B IT Free</option>
-                        </select>
+                        <div class="cs-wrap">
+                            <div class="cs-trigger" id="modelTrigger" onclick="toggleModelDropdown()">
+                                <span id="modelSelected">Gemma 4 31B IT Free</span>
+                                <span class="cs-arrow" id="modelArrow">▾</span>
+                            </div>
+                            <div class="cs-drop" id="modelDrop"></div>
+                            <input type="hidden" id="modelSelect" value="google/gemma-4-31b-it:free">
+                        </div>
                     </div>
                     <div class="settings-status" id="apiStatus"></div>
+                    <div id="settingsCompanyDesc" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+                        <div class="settings-field">
+                            <label>Ramo de atuação da empresa</label>
+                            <input type="text" id="settingsCompanySector" placeholder="Ex: Marketing digital, E-commerce...">
+                        </div>
+                        <div class="settings-field">
+                            <label>Descrição da empresa</label>
+                            <textarea id="settingsCompanyDesc" placeholder="Descreva brevemente o negócio da sua empresa..."
+                                style="width:100%;min-height:80px;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.85rem;font-family:inherit;outline:none;resize:vertical;line-height:1.5"></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="saveSettingsCompanyDesc()" style="margin-top:4px">Salvar descrição</button>
+                        <div class="settings-hint" style="margin-top:6px">A IA usará essas informações para personalizar sugestões e análises.</div>
+                    </div>
                     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
                         <!-- Meta Ads Collapsible -->
                         <div class="collapsible-section">
@@ -9010,7 +9365,7 @@
             // =====================================================================
 
             function renderEmptyChartGrid() {
-                var w = 500, h = 200, padL = 10, padR = 10, padT = 24, padB = 24;
+                var w = 500, h = 280, padL = 10, padR = 10, padT = 24, padB = 24;
                 var cH = h - padT - padB;
                 var html = '';
                 for (var gi = 1; gi <= 4; gi++) {
@@ -9160,7 +9515,7 @@
                     var yRange = yMax - yMin;
 
                     var isMobile = window.innerWidth < 768;
-                    var w = 500, h = isMobile ? 300 : 160, padL = isMobile ? 70 : 45, padR = 10, padT = isMobile ? 14 : 16, padB = isMobile ? 18 : 16;
+                    var w = 500, h = isMobile ? 350 : 220, padL = isMobile ? 70 : 50, padR = 10, padT = isMobile ? 14 : 18, padB = isMobile ? 18 : 18;
                     var cH = h - padT - padB;
                     var gap = (w - padL - padR) / buckets.length;
 
@@ -9399,13 +9754,10 @@
                 }
 
                 list.innerHTML = sorted.map(item => {
-                    const prazoLabel = item.prazo === 'curto' ? 'Curto' : item.prazo === 'medio' ? 'Médio' : 'Longo';
-                    const prazoClass = 'tp-tag';
                     const cl = item.done ? 'tp-label done' : 'tp-label';
                     return `
                     <div class="tp-item" onclick="toggleItem('${item.id}')">
                         <span class="${cl}">${esc(item.label)}</span>
-                        <span class="tp-tag ${prazoClass}">${prazoLabel}</span>
                     </div>
                 `;
                 }).join('');
@@ -9480,7 +9832,6 @@
                                                 </label>
                                             </div>
                                             <span class="item-label">${esc(item.label)}</span>
-                                            <span class="item-tag">${item.prio === 'alta' ? 'Alta' : item.prio === 'media' ? 'Média' : 'Baixa'}</span>
                                             <span class="impact-hint">${prazoLabel}</span>
                                             <button class="btn-remove" onclick="removeItem('${item.id}')" title="Remover item"><i class="fi fi-rr-cross"></i></button>
                                         </div>
@@ -9551,6 +9902,8 @@
                         if (w && !w.contains(e.target)) closeBC(k);
                     }
                 });
+                if (_editPriOpen && !e.target.closest('#editPriTrigger') && !e.target.closest('#editPriDrop')) closeEditPriDropdown();
+                if (_editPrazoOpen && !e.target.closest('#editPrazoTrigger') && !e.target.closest('#editPrazoDrop')) closeEditPrazoDropdown();
             });
 
             // =====================================================================
@@ -9680,6 +10033,12 @@
                 document.getElementById('editLabel').textContent = item.label;
                 document.getElementById('editPrioridade').value = item.prio || 'media';
                 document.getElementById('editPrazo').value = item.prazo || 'medio';
+                var priMap = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
+                document.getElementById('editPriSelected').textContent = priMap[item.prio] || 'Média';
+                var prazoMap = { curto: 'Curto (dias)', medio: 'Médio (semanas)', longo: 'Longo (meses)' };
+                document.getElementById('editPrazoSelected').textContent = prazoMap[item.prazo] || 'Médio (semanas)';
+                document.querySelectorAll('#editPriDrop .cs-opt').forEach(function (o) { o.classList.toggle('selected', o.dataset.value === (item.prio || 'media')); });
+                document.querySelectorAll('#editPrazoDrop .cs-opt').forEach(function (o) { o.classList.toggle('selected', o.dataset.value === (item.prazo || 'medio')); });
 
                 var drop = document.getElementById('editCsDrop');
                 drop.innerHTML = categories.map(function (c) {
@@ -9713,6 +10072,53 @@
                 render();
                 closeEditModal();
                 showToast('<i class="fi fi-rr-check-circle"></i> Item atualizado');
+            }
+
+            var _editPriOpen = false;
+            var _editPrazoOpen = false;
+            function toggleEditPriDropdown() {
+                _editPriOpen ? closeEditPriDropdown() : openEditPriDropdown();
+            }
+            function openEditPriDropdown() {
+                _editPriOpen = true; closeEditPrazoDropdown();
+                document.getElementById('editPriDrop').classList.add('visible');
+                document.getElementById('editPriTrigger').classList.add('open');
+                document.getElementById('editPriArrow').classList.add('open');
+            }
+            function closeEditPriDropdown() {
+                _editPriOpen = false;
+                document.getElementById('editPriDrop').classList.remove('visible');
+                document.getElementById('editPriTrigger').classList.remove('open');
+                document.getElementById('editPriArrow').classList.remove('open');
+            }
+            function selectEditPri(value) {
+                var map = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
+                document.getElementById('editPrioridade').value = value;
+                document.getElementById('editPriSelected').textContent = map[value] || value;
+                document.querySelectorAll('#editPriDrop .cs-opt').forEach(function (o) { o.classList.toggle('selected', o.dataset.value === value); });
+                closeEditPriDropdown();
+            }
+            function toggleEditPrazoDropdown() {
+                _editPrazoOpen ? closeEditPrazoDropdown() : openEditPrazoDropdown();
+            }
+            function openEditPrazoDropdown() {
+                _editPrazoOpen = true; closeEditPriDropdown();
+                document.getElementById('editPrazoDrop').classList.add('visible');
+                document.getElementById('editPrazoTrigger').classList.add('open');
+                document.getElementById('editPrazoArrow').classList.add('open');
+            }
+            function closeEditPrazoDropdown() {
+                _editPrazoOpen = false;
+                document.getElementById('editPrazoDrop').classList.remove('visible');
+                document.getElementById('editPrazoTrigger').classList.remove('open');
+                document.getElementById('editPrazoArrow').classList.remove('open');
+            }
+            function selectEditPrazo(value) {
+                var map = { curto: 'Curto (dias)', medio: 'Médio (semanas)', longo: 'Longo (meses)' };
+                document.getElementById('editPrazo').value = value;
+                document.getElementById('editPrazoSelected').textContent = map[value] || value;
+                document.querySelectorAll('#editPrazoDrop .cs-opt').forEach(function (o) { o.classList.toggle('selected', o.dataset.value === value); });
+                closeEditPrazoDropdown();
             }
 
             function closeEditModal() {
@@ -9954,25 +10360,25 @@
             function defaultKanban() {
                 return [
                     {
-                        id: 'col-1', title: '<i class="fi fi-rr-memo"></i> Ideias', cards: [
+                        id: 'col-1', icon: 'fi-rr-memo', title: 'Ideias', cards: [
                             { title: 'Webinar sobre tráfego pago', desc: 'Convidar especialista para falar sobre Facebook Ads e Google Ads' },
                             { title: 'E-book: Guia de Marketing Digital para Agências', desc: 'Compilar cases da Veltris e criar material rico para captura de leads' },
                             { title: 'Série de vídeos curtos para o Instagram', desc: 'Reels com dicas rápidas de vendas e marketing' }
                         ]
                     },
                     {
-                        id: 'col-2', title: '<i class="fi fi-rr-wrench"></i> Em Produção', cards: [
+                        id: 'col-2', icon: 'fi-rr-wrench-simple', title: 'Em Produção', cards: [
                             { title: 'Case de sucesso: Cliente X', desc: 'Entrevistar cliente, colher dados de resultado, editar depoimento' },
                             { title: 'Post carrossel: Tendências 2026', desc: 'Pesquisar tendências de marketing digital para o próximo ano' }
                         ]
                     },
                     {
-                        id: 'col-3', title: '<i class="fi fi-rr-check-circle"></i> Revisão', cards: [
+                        id: 'col-3', icon: 'fi-rr-check-circle', title: 'Revisão', cards: [
                             { title: 'Newsletter mensal - Junho', desc: 'Revisar textos, checar links e agendar disparo' }
                         ]
                     },
                     {
-                        id: 'col-4', title: '<i class="fi fi-rr-rocket"></i> Publicado', cards: [
+                        id: 'col-4', icon: 'fi-rr-rocket', title: 'Publicado', cards: [
                             { title: 'Artigo: Como otimizar seu funil de vendas', desc: 'Publicado no blog e LinkedIn' },
                             { title: 'Template de brief criativo', desc: 'Disponível na biblioteca da equipe' }
                         ]
@@ -10025,10 +10431,25 @@
                     kanbanData = defaultKanban();
                     saveKanban();
                 }
+                // Migrate old format (title with HTML) to new format (icon + title)
+                var needsSave = false;
+                kanbanData.forEach(function (col) {
+                    if (col.title && col.title.indexOf('<') >= 0 && !col.icon) {
+                        var iconMatch = col.title.match(/<i class="fi (fi-rr-[^"]+)"><\/i>\s*/);
+                        if (iconMatch) {
+                            col.icon = iconMatch[1];
+                            col.title = col.title.replace(/<i class="fi [^"]+"><\/i>\s*/, '');
+                            needsSave = true;
+                        }
+                    }
+                    // Fix invalid icon names
+                    if (col.icon === 'fi-rr-wrench') col.icon = 'fi-rr-wrench-simple';
+                });
+                if (needsSave) saveKanban();
                 board.innerHTML = kanbanData.map(function (col, ci) {
-                    return '<div class="kanban-col" data-col="' + ci + '">' +
+                    return '<div class="kanban-col" data-col="' + ci + '" data-col-id="' + (col.id || '') + '">' +
                         '<div class="kanban-col-header">' +
-                        '<div class="kch-title">' + col.title +
+                        '<div class="kch-title"><i class="fi ' + (col.icon || 'fi-rr-memo') + '"></i> ' + col.title +
                         '<span class="kch-count">' + col.cards.length + '</span>' +
                         '</div>' +
                         '<div class="kch-actions">' +
@@ -10043,7 +10464,7 @@
                                 '<div class="kc-title">' + esc(card.title) + '</div>' +
                                 (card.desc ? '<div class="kc-desc">' + esc(card.desc) + '</div>' : '') +
                                 '<div class="kc-footer">' +
-                                '<span class="kc-tag ' + tagClass(col.id) + '">' + esc(col.title.replace(/<[^>]+>/g, '').trim()) + '</span>' +
+                                '<span class="kc-tag ' + tagClass(col.id) + '">' + esc(col.title) + '</span>' +
                                 '<div style="display:flex;align-items:center;gap:6px">' +
                                 (commentCount > 0 ? '<span style="font-size:0.6rem;color:var(--text-muted)"><i class="fi fi-rr-comment-alt"></i>' + commentCount + '</span>' : '') +
                                 '<div class="kc-actions">' +
@@ -10076,6 +10497,7 @@
             var cardClone = null;
             var cardMoving = false;
             var pointerMoved = false;
+            var colDrag = null;
 
             function initBoardGrab() {
                 var container = document.getElementById('tabConteudos');
@@ -10092,6 +10514,17 @@
                 var board = document.getElementById('kanbanBoard');
                 if (!board) return;
                 var cardEl = e.target.closest('.kanban-card');
+                var colHeader = e.target.closest('.kanban-col-header');
+
+                if (colHeader && !cardEl) {
+                    var colEl = colHeader.closest('.kanban-col');
+                    if (colEl) {
+                        colDrag = { el: colEl, col: parseInt(colEl.dataset.col), startX: e.clientX, startY: e.clientY };
+                        document.addEventListener('mousemove', onColMouseMove);
+                        document.addEventListener('mouseup', onColMouseUp);
+                        return;
+                    }
+                }
 
                 scrollState = {
                     startX: e.clientX,
@@ -10121,6 +10554,51 @@
                 }
                 document.addEventListener('mousemove', onMouseMove);
                 document.addEventListener('mouseup', onMouseUp);
+            }
+
+            function onColMouseMove(e) {
+                if (!colDrag) return;
+                var board = document.getElementById('kanbanBoard');
+                if (!board) return;
+                var cols = board.querySelectorAll('.kanban-col');
+                var dropIndex = -1;
+                cols.forEach(function (c, i) {
+                    var r = c.getBoundingClientRect();
+                    var mid = r.left + r.width / 2;
+                    if (e.clientX < mid && dropIndex < 0) dropIndex = i;
+                });
+                if (dropIndex < 0) dropIndex = cols.length - 1;
+                cols.forEach(function (c) { c.classList.remove('col-drag-indicator'); });
+                if (dropIndex !== colDrag.col && dropIndex !== colDrag.col + 1) {
+                    var targetCol = cols[dropIndex];
+                    if (targetCol) targetCol.classList.add('col-drag-indicator');
+                }
+            }
+
+            function onColMouseUp(e) {
+                document.removeEventListener('mousemove', onColMouseMove);
+                document.removeEventListener('mouseup', onColMouseUp);
+                if (!colDrag) return;
+                var board = document.getElementById('kanbanBoard');
+                if (board) {
+                    board.querySelectorAll('.kanban-col').forEach(function (c) { c.classList.remove('col-drag-indicator'); });
+                }
+                var cols = board ? board.querySelectorAll('.kanban-col') : [];
+                var dropIndex = -1;
+                cols.forEach(function (c, i) {
+                    var r = c.getBoundingClientRect();
+                    var mid = r.left + r.width / 2;
+                    if (e.clientX < mid && dropIndex < 0) dropIndex = i;
+                });
+                if (dropIndex < 0) dropIndex = cols.length;
+                var from = colDrag.col;
+                if (dropIndex === from || dropIndex === from + 1) { colDrag = null; return; }
+                var item = kanbanData.splice(from, 1)[0];
+                var target = dropIndex > from ? dropIndex - 1 : dropIndex;
+                kanbanData.splice(target, 0, item);
+                saveKanban();
+                renderKanban();
+                colDrag = null;
             }
 
             function onMouseMove(e) {
@@ -10239,7 +10717,7 @@
                 cardModalMode = 'edit';
                 cardModalCol = colIdx;
                 cardModalCard = cardIdx;
-                document.getElementById('cardModalTitle').textContent = '<i class="fi fi-rr-clipboard-list"></i> ' + esc(card.title);
+                document.getElementById('cardModalTitle').innerHTML = '<i class="fi fi-rr-clipboard-list"></i> ' + esc(card.title);
                 document.getElementById('cardTitleInput').value = card.title || '';
                 document.getElementById('cardDescInput').value = card.desc || '';
                 renderComments(card);
@@ -10251,7 +10729,7 @@
                 cardModalMode = 'add';
                 cardModalCol = colIdx;
                 cardModalCard = -1;
-                document.getElementById('cardModalTitle').textContent = '<i class="fi fi-rr-plus"></i> Novo Card';
+                document.getElementById('cardModalTitle').innerHTML = '<i class="fi fi-rr-plus"></i> Novo Card';
                 document.getElementById('cardTitleInput').value = '';
                 document.getElementById('cardDescInput').value = '';
                 document.getElementById('commentsList').innerHTML = '';
@@ -10344,7 +10822,7 @@
             }
 
             function deleteKanbanCard(colIdx, cardIdx) {
-                document.getElementById('confirmTitle').textContent = '<i class="fi fi-rr-trash"></i> Excluir card';
+                    document.getElementById('confirmTitle').innerHTML = '<i class="fi fi-rr-trash"></i> Excluir card';
                 document.getElementById('confirmMessage').textContent = 'Excluir este card?';
                 document.getElementById('confirmOverlay').style.display = 'flex';
                 document.getElementById('confirmOkBtn').onclick = function () {
@@ -10379,6 +10857,11 @@
                 window._kanbanIdx = colIdx;
                 title.textContent = 'Novo nome';
                 input.value = kanbanData[colIdx].title;
+                // Set current icon
+                var curIcon = kanbanData[colIdx].icon || 'fi-rr-memo';
+                document.querySelectorAll('#iconPicker .icon-opt').forEach(function (o) {
+                    o.classList.toggle('selected', o.dataset.icon === curIcon);
+                });
                 overlay.style.display = 'flex';
                 setTimeout(function () { input.focus(); }, 100);
             }
@@ -10388,19 +10871,26 @@
             if (pi) pi.addEventListener('keydown', function (e) { if (e.key === 'Enter') document.querySelector('#promptOverlay .btn-save').click(); });
             var po = document.getElementById('promptOverlay');
             if (po) po.addEventListener('click', function (e) { if (e.target === po) po.style.display = 'none'; });
+            // Icon picker
+            document.getElementById('iconPicker').addEventListener('click', function (e) {
+                var opt = e.target.closest('.icon-opt');
+                if (!opt) return;
+                this.querySelectorAll('.icon-opt').forEach(function (o) { o.classList.remove('selected'); });
+                opt.classList.add('selected');
+            });
             // Confirm modal overlay click
             var co = document.getElementById('confirmOverlay');
             if (co) co.addEventListener('click', function (e) { if (e.target === co) co.style.display = 'none'; });
 
             function deleteKanbanCol(colIdx) {
                 if (kanbanData.length <= 1) {
-                    document.getElementById('confirmTitle').textContent = '<i class="fi fi-rr-triangle-warning"></i> Aviso';
+                    document.getElementById('confirmTitle').innerHTML = '<i class="fi fi-rr-triangle-warning"></i> Aviso';
                     document.getElementById('confirmMessage').textContent = 'Deve haver pelo menos uma coluna.';
                     document.getElementById('confirmOverlay').style.display = 'flex';
                     document.getElementById('confirmOkBtn').onclick = function () { document.getElementById('confirmOverlay').style.display = 'none'; };
                     return;
                 }
-                document.getElementById('confirmTitle').textContent = '<i class="fi fi-rr-trash"></i> Excluir coluna';
+                document.getElementById('confirmTitle').innerHTML = '<i class="fi fi-rr-trash"></i> Excluir coluna';
                 document.getElementById('confirmMessage').textContent = 'Excluir coluna "' + kanbanData[colIdx].title + '" e todos os seus cards?';
                 document.getElementById('confirmOverlay').style.display = 'flex';
                 document.getElementById('confirmOkBtn').onclick = function () {
@@ -10858,7 +11348,11 @@
                     'Score: ' + scoreLabel(calcScoreGeral()).replace(/<[^>]*>?/gm, '') + ' (' + calcScoreGeral() + '/100) | ' +
                     'Concluído: ' + overallPct() + '%';
 
-                var systemPrompt = 'Você é um CEO/CMO/COO consultor sênior da empresa Veltris. ' +
+                var companySector = getCompanyDescription() ? (_companyMode.descriptionSector || '') : '';
+                var companyDesc = getCompanyDescription() ? (_companyMode.description || '') : '';
+                var companyContext = companySector || companyDesc ? 'A empresa atua no ramo: ' + (companySector || 'não informado') + '. Descrição: ' + (companyDesc || 'não informada') + '.' : '';
+                var companyName = _companyMode ? (_companyMode.name || 'Veltris') : 'Veltris';
+                var systemPrompt = 'Você é um CEO/CMO/COO consultor sênior da empresa ' + companyName + '. ' + companyContext + ' ' +
                     'Você tem acesso TOTAL a todos os dados da plataforma. Seu papel é: ' +
                     '1) Responder perguntas sobre estratégia, marketing, vendas, finanças e operações. ' +
                     '2) Sugerir conteúdos, ações e melhorias baseadas nos dados reais. ' +
@@ -11018,7 +11512,22 @@
                         if (s.google_pagespeed_key) localStorage.setItem('veltris_google_pagespeed_key', s.google_pagespeed_key);
                         if (isAdmin) {
                             document.getElementById('apiKeyInput').value = s.openrouter_api_key || '';
-                            document.getElementById('modelSelect').value = s.openrouter_model || 'google/gemma-4-31b-it:free';
+                            var modelVal = s.openrouter_model || 'google/gemma-4-31b-it:free';
+                            document.getElementById('modelSelect').value = modelVal;
+                            var modelLabel = modelVal;
+                            var models = [
+                                { value: 'google/gemma-4-31b-it:free', label: 'Gemma 4 31B IT Free' },
+                                { value: 'openai/gpt-oss-120b:free', label: 'Gpt' },
+                                { value: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
+                                { value: 'deepseek/deepseek-v4-flash:free', label: 'DeepSeek V4 Flash Free' },
+                                { value: 'deepseek/deepseek-r1', label: 'DeepSeek R1' },
+                                { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
+                                { value: 'anthropic/claude-3-haiku', label: 'Claude 3 Haiku' },
+                                { value: 'google/gemini-2.5-flash:free', label: 'Gemini 2.5 Flash' },
+                                { value: 'google/gemma-4-26b-a4b-it:free', label: 'Gemma 4 26B A4B IT Free' },
+                            ];
+                            models.forEach(function (m) { if (m.value === modelVal) modelLabel = m.label; });
+                            document.getElementById('modelSelected').textContent = modelLabel;
                             document.getElementById('metaTokenInput').value = s.meta_access_token || '';
                             document.getElementById('metaAdAccountInput').value = s.meta_ad_account || '';
                             document.getElementById('googleDevTokenInput').value = s.google_dev_token || '';
@@ -11034,7 +11543,72 @@
                         var localKey = localStorage.getItem('veltris_api_key');
                         if (localKey) document.getElementById('apiKeyInput').value = localKey;
                     }
+                }).finally(function () {
+                    var descSection = document.getElementById('settingsCompanyDesc');
+                    if (descSection && isCompanyMode() && _companyMode) {
+                        descSection.style.display = '';
+                        document.getElementById('settingsCompanySector').value = _companyMode.descriptionSector || '';
+                        document.getElementById('settingsCompanyDesc').value = _companyMode.description || '';
+                    } else if (descSection) {
+                        descSection.style.display = 'none';
+                    }
                 });
+            }
+
+            function saveSettingsCompanyDesc() {
+                var sector = document.getElementById('settingsCompanySector').value.trim();
+                var desc = document.getElementById('settingsCompanyDesc').value.trim();
+                if (!sector && !desc) { showToast('Preencha pelo menos um dos campos'); return; }
+                if (_companyMode) {
+                    _companyMode.descriptionSector = sector;
+                    _companyMode.description = desc;
+                    try { localStorage.setItem('veltris_company_desc_' + _companyMode.id, JSON.stringify({ sector: sector, description: desc })); } catch (e) {}
+                    api.companyUpdate(_companyMode.id, { description_sector: sector, description: desc }).catch(function () {});
+                }
+                showToast('Descrição salva! A IA usará esse contexto.');
+            }
+
+            var _modelOpen = false;
+            var MODELS = [
+                { value: 'google/gemma-4-31b-it:free', label: 'Gemma 4 31B IT Free' },
+                { value: 'openai/gpt-oss-120b:free', label: 'Gpt' },
+                { value: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
+                { value: 'deepseek/deepseek-v4-flash:free', label: 'DeepSeek V4 Flash Free' },
+                { value: 'deepseek/deepseek-r1', label: 'DeepSeek R1' },
+                { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
+                { value: 'anthropic/claude-3-haiku', label: 'Claude 3 Haiku' },
+                { value: 'google/gemini-2.5-flash:free', label: 'Gemini 2.5 Flash' },
+                { value: 'google/gemma-4-26b-a4b-it:free', label: 'Gemma 4 26B A4B IT Free' },
+            ];
+            function initModelDropdown() {
+                var drop = document.getElementById('modelDrop');
+                drop.innerHTML = MODELS.map(function (m) {
+                    return '<div class="cs-opt" data-value="' + m.value + '" onclick="selectModel(\'' + m.value.replace(/'/g, "\\'") + '\')">' + m.label + '</div>';
+                }).join('');
+            }
+            function toggleModelDropdown() {
+                _modelOpen ? closeModelDropdown() : openModelDropdown();
+            }
+            function openModelDropdown() {
+                _modelOpen = true;
+                initModelDropdown();
+                document.getElementById('modelDrop').classList.add('visible');
+                document.getElementById('modelTrigger').classList.add('open');
+                document.getElementById('modelArrow').classList.add('open');
+            }
+            function closeModelDropdown() {
+                _modelOpen = false;
+                document.getElementById('modelDrop').classList.remove('visible');
+                document.getElementById('modelTrigger').classList.remove('open');
+                document.getElementById('modelArrow').classList.remove('open');
+            }
+            function selectModel(value) {
+                document.getElementById('modelSelect').value = value;
+                var label = value;
+                MODELS.forEach(function (m) { if (m.value === value) label = m.label; });
+                document.getElementById('modelSelected').textContent = label;
+                document.querySelectorAll('#modelDrop .cs-opt').forEach(function (o) { o.classList.toggle('selected', o.dataset.value === value); });
+                closeModelDropdown();
             }
 
             function saveSettings() {
@@ -11452,6 +12026,9 @@
                 var wrap4 = document.getElementById('editDocSectorTrigger');
                 if (editDocSectorOpen && wrap4 && !wrap4.closest('.settings-field').contains(e.target)) closeEditDocSectorDropdown();
             });
+            document.addEventListener('click', function (e) {
+                if (_modelOpen && !e.target.closest('#modelTrigger') && !e.target.closest('#modelDrop')) closeModelDropdown();
+            });
 
             // =====================================================================
             //  USER MANAGEMENT
@@ -11479,6 +12056,11 @@
 
             function loadUsers() {
                 api.listUsers().then(function (users) {
+                    api._usersCache = users || [];
+                    var currentUser = api.getUser();
+                    var sess = api.companyGetSession && api.companyGetSession();
+                    if (!currentUser && sess && sess.user) currentUser = sess.user;
+                    var currentRole = currentUser ? (currentUser.role || 'colaborador') : 'colaborador';
                     var tbody = document.getElementById('usersTableBody');
                     tbody.innerHTML = '';
                     (users || []).forEach(function (u) {
@@ -11487,13 +12069,16 @@
                         var sectorTags = (Array.isArray(sectors) ? sectors : []).map(function (s) { return '<span class="sector-tag">' + escapeHtml(s) + '</span>'; }).join('');
                         var roleClass = u.role || 'colaborador';
                         var roleLabel = { admin: 'Admin', gestor: 'Gestor', colaborador: 'Colaborador' }[roleClass] || roleClass;
+                        var canDelete = false;
+                        if (currentRole === 'admin') canDelete = true;
+                        else if (currentRole === 'gestor') canDelete = (roleClass === 'colaborador');
                         var row = document.createElement('tr');
                         row.innerHTML = '<td><strong>' + escapeHtml(u.name) + '</strong></td>' +
                             '<td><span class="role-badge ' + roleClass + '">' + roleLabel + '</span></td>' +
                             '<td>' + (sectorTags || '<span style="color:var(--text-muted);font-size:0.7rem">—</span>') + '</td>' +
                             '<td><div class="user-actions">' +
                             '<button onclick="editUser(' + u.id + ')"><i class="fi fi-rr-pencil"></i></button>' +
-                            '<button class="btn-del" onclick="deleteUser(' + u.id + ')"><i class="fi fi-rr-trash"></i></button>' +
+                            (canDelete ? '<button class="btn-del" onclick="deleteUser(' + u.id + ')"><i class="fi fi-rr-trash"></i></button>' : '') +
                             '</div></td>';
                         tbody.appendChild(row);
                     });
@@ -11552,6 +12137,27 @@
             }
 
             function deleteUser(id) {
+                var currentUser = api.getUser();
+                var sess = api.companyGetSession && api.companyGetSession();
+                if (!currentUser && sess && sess.user) currentUser = sess.user;
+                var currentRole = currentUser ? (currentUser.role || 'colaborador') : 'colaborador';
+                if (currentRole === 'colaborador') { showUserStatus('Você não tem permissão para excluir usuários.', 'err'); return; }
+                if (currentRole === 'gestor') {
+                    var userToDelete = (api._usersCache || []).find(function (u) { return u.id === id; });
+                    if (!userToDelete) {
+                        api.listUsers().then(function (users) {
+                            api._usersCache = users || [];
+                            var target = (users || []).find(function (u) { return u.id === id; });
+                            if (target && target.role !== 'colaborador') { showUserStatus('Gestor só pode excluir colaboradores.', 'err'); return; }
+                            proceedDeleteUser(id);
+                        });
+                        return;
+                    }
+                    if (userToDelete.role !== 'colaborador') { showUserStatus('Gestor só pode excluir colaboradores.', 'err'); return; }
+                }
+                proceedDeleteUser(id);
+            }
+            function proceedDeleteUser(id) {
                 if (!confirm('Tem certeza que deseja remover este usuário?')) return;
                 api.deleteUser(id).then(function () {
                     showUserStatus('<i class="fi fi-rr-check-circle"></i> Usuário removido!', 'ok');
@@ -11585,17 +12191,27 @@
             document.querySelectorAll('.tab').forEach(function (tab) {
                 tab.addEventListener('click', function () {
                     closeMobileSidebar();
+                    var key = tab.dataset.tab;
                     document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
                     document.querySelectorAll('.tab-content').forEach(function (tc) { tc.classList.remove('active'); });
                     tab.classList.add('active');
-                    if (!tab.dataset.tab) return;
-                    _lastTab = tab.dataset.tab;
-                    var target = document.getElementById('tab' + tab.dataset.tab.charAt(0).toUpperCase() + tab.dataset.tab.slice(1));
-                    if (target) target.classList.add('active');
-                    if (tab.dataset.tab === 'conteudos') renderKanban();
-                    if (tab.dataset.tab === 'ia') { renderChat(); reloadKnowledgeBase(function () { document.getElementById('kbText').value = loadKnowledgeBase(); }); }
-                    if (tab.dataset.tab === 'financeiro') renderFinanceCharts();
-                    if (tab.dataset.tab === 'crm') {
+                    if (!key) return;
+                    _lastTab = key;
+                    var target = document.getElementById('tab' + key.charAt(0).toUpperCase() + key.slice(1));
+                    if (!target) return;
+                    if (isCompanyMode() && !hasTabAccess(key) && key !== 'usuarios') {
+                        target.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center">' +
+                            '<div style="font-size:2.5rem;margin-bottom:16px;color:var(--text-muted)"><i class="fi fi-rr-lock"></i></div>' +
+                            '<h3 style="color:var(--text);font-size:1.1rem;margin-bottom:8px">Acesso restrito</h3>' +
+                            '<p style="color:var(--text-muted);font-size:0.85rem;max-width:360px">Você não tem permissão para acessar esta área. Solicite ao administrador da empresa para liberar o acesso.</p>' +
+                            '</div>';
+                    }
+                    target.classList.add('active');
+                    if (!hasTabAccess(key) && key !== 'usuarios') return;
+                    if (key === 'conteudos') renderKanban();
+                    if (key === 'ia') { renderChat(); reloadKnowledgeBase(function () { document.getElementById('kbText').value = loadKnowledgeBase(); }); }
+                    if (key === 'financeiro') renderFinanceCharts();
+                    if (key === 'crm') {
                         loadRoletaAvailableUsers();
                         loadRoletaData().then(function () {
                             return loadRoletaAssigns();
@@ -11605,14 +12221,14 @@
                             requestNotificationPermission();
                         });
                     } else stopCRMPoll();
-                    if (tab.dataset.tab === 'metricas') {
+                    if (key === 'metricas') {
                         initMetricaSourceDropdown();
                         renderMetricas();
                     }
-                    if (tab.dataset.tab === 'empresas') {
+                    if (key === 'empresas') {
                         empRender();
                     }
-                    if (tab.dataset.tab === 'usuarios') {
+                    if (key === 'usuarios') {
                         usrRender();
                     }
                 });
@@ -11621,26 +12237,33 @@
             function toggleSidebar() {
                 var sb = document.getElementById('sidebar');
                 var btn = document.getElementById('sidebarToggle');
-                var layout = document.querySelector('.app-layout');
-                sb.classList.toggle('closed');
-                btn.textContent = sb.classList.contains('closed') ? '▶' : '◀';
-                if (layout) {
-                    layout.style.paddingLeft = sb.classList.contains('closed') ? '80px' : '280px';
+                var isMobile = window.innerWidth <= 768;
+                if (isMobile) {
+                    sb.classList.toggle('open');
+                } else {
+                    var layout = document.querySelector('.app-layout');
+                    var isClosed = sb.classList.contains('closed');
+                    if (isClosed) {
+                        sb.classList.remove('closed');
+                        btn.innerHTML = '<span class="si-hamburger" style="display:none">☰</span><span class="si-arrow">◀</span>';
+                    } else {
+                        sb.classList.add('closed');
+                        btn.innerHTML = '<span class="si-hamburger" style="display:none">☰</span><span class="si-arrow">▶</span>';
+                    }
+                    if (layout) {
+                        layout.style.paddingLeft = sb.classList.contains('closed') ? '80px' : '280px';
+                    }
                 }
             }
 
             function mobileToggleSidebar() {
                 var sb = document.getElementById('sidebar');
-                var bp = document.getElementById('sidebarBackdrop');
                 sb.classList.toggle('open');
-                bp.classList.toggle('visible');
             }
 
             function closeMobileSidebar() {
                 var sb = document.getElementById('sidebar');
-                var bp = document.getElementById('sidebarBackdrop');
                 sb.classList.remove('open');
-                bp.classList.remove('visible');
             }
 
             document.addEventListener('click', function (e) {
@@ -12148,7 +12771,11 @@
                     'Score: ' + scoreLabel(calcScoreGeral()).replace(/<[^>]*>?/gm, '') + ' (' + calcScoreGeral() + '/100) | ' +
                     'Concluído: ' + overallPct() + '%';
 
-                var systemPrompt = 'Você é um CEO/CMO/COO consultor sênior da empresa Veltris. ' +
+                var companySector = getCompanyDescription() ? (_companyMode.descriptionSector || '') : '';
+                var companyDesc = getCompanyDescription() ? (_companyMode.description || '') : '';
+                var companyContext = companySector || companyDesc ? 'A empresa atua no ramo: ' + (companySector || 'não informado') + '. Descrição: ' + (companyDesc || 'não informada') + '.' : '';
+                var companyName = _companyMode ? (_companyMode.name || 'Veltris') : 'Veltris';
+                var systemPrompt = 'Você é um CEO/CMO/COO consultor sênior da empresa ' + companyName + '. ' + companyContext + ' ' +
                     'Você tem acesso TOTAL a todos os dados da plataforma. Seu papel é: ' +
                     '1) Responder perguntas sobre estratégia, marketing, vendas, finanças e operações. ' +
                     '2) Sugerir conteúdos, ações e melhorias baseadas nos dados reais. ' +
@@ -12295,14 +12922,18 @@
                     return '- ' + i.label + ' [' + i.cat + '] ' + (i.done ? '(concluído)' : '(pendente)');
                 }).join('\n') || '(nenhum item cadastrado)';
 
-                var systemPrompt = 'Você é um CEO/CMO/COO consultor da empresa Veltris, uma agência/consultoria de marketing, vendas e tecnologia. ' +
-                    'Com base nos itens atuais do checklist e seu conhecimento em gestão empresarial, sugira 3-5 ações práticas que a Veltris deveria implementar ' +
+                var companySector = getCompanyDescription() ? (_companyMode.descriptionSector || '') : '';
+                var companyDesc = getCompanyDescription() ? (_companyMode.description || '') : '';
+                var companyContext = companySector || companyDesc ? 'A empresa atua no ramo: ' + (companySector || 'não informado') + '. Descrição: ' + (companyDesc || 'não informada') + '.' : 'A empresa é a Veltris, uma agência/consultoria de marketing, vendas e tecnologia.';
+                var systemPrompt = 'Você é um CEO/CMO/COO consultor. ' + companyContext + ' ' +
+                    'Com base nos itens atuais do checklist e seu conhecimento em gestão empresarial, sugira 3-5 ações práticas que a empresa deveria implementar ' +
                     'para melhorar performance, receita, eficiência ou crescimento. Cada sugestão deve ter: título, descrição curta, categoria (Vendas/Marketing/Financeiro/Produto/Operacional/RH) e nível de impacto (Alto/Médio/Baixo). ' +
                     'Retorne APENAS um JSON array válido no formato: [{"titulo":"...","descricao":"...","categoria":"...","impacto":"Alto"}]. Não use markdown.';
 
+                var companyName = _companyMode ? _companyMode.name : 'Veltris';
                 var result = await callOpenRouter([
                     { role: 'system', content: systemPrompt },
-                    { role: 'user', content: 'Checklist atual da Veltris:\n' + itemsList + '\n\nCom base nisso, gere sugestões de melhoria.' }
+                    { role: 'user', content: 'Checklist atual da ' + companyName + ':\n' + itemsList + '\n\nCom base nisso, gere sugestões de melhoria.' }
                 ], { maxTokens: 2000, temperature: 0.8 });
 
                 if (!result) {
@@ -12321,8 +12952,6 @@
                         sugestoes = parsed;
                         saveSugestoes();
                         renderNotifs();
-                        notifPanelOpen = true;
-                        document.getElementById('notifPanel').classList.add('visible');
                         showToast('<i class="fi fi-rr-lightbulb-on"></i> ' + sugestoes.length + ' sugestões geradas pela IA!');
                     }
                 } catch (e) {
@@ -12342,7 +12971,10 @@
                     return idx + 1 + '. "' + i.label + '" (categoria atual: ' + i.cat + ', prioridade: ' + i.prio + ', prazo: ' + i.prazo + ')';
                 }).join('\n');
 
-                var systemPrompt = 'Você é um CEO/CMO/COO consultor da Veltris, uma agência de marketing, vendas e tecnologia. ' +
+                var companySector = getCompanyDescription() ? (_companyMode.descriptionSector || '') : '';
+                var companyDesc = getCompanyDescription() ? (_companyMode.description || '') : '';
+                var companyContext = companySector || companyDesc ? 'A empresa atua no ramo: ' + (companySector || 'não informado') + '. Descrição: ' + (companyDesc || 'não informada') + '.' : 'A empresa é a Veltris, uma agência/consultoria de marketing, vendas e tecnologia.';
+                var systemPrompt = 'Você é um CEO/CMO/COO consultor. ' + companyContext + ' ' +
                     'Analise CADA item individualmente e reavalie sua categoria, prioridade e prazo com base no significado REAL de cada categoria:\n\n' +
                     'CATEGORIAS:\n' +
                     '- vendas: ações que geram receita DIRETA (fechar contratos, propostas, ligações, negociações, funil de vendas, leads)\n' +
@@ -12924,16 +13556,16 @@
                         renderAdData(source, apiData);
                         // Also render CRM funnel in secondary section
                         loadCrmLeadsForMetricas(source, true);
-                        statusEl.textContent = '<i class="fi fi-rr-check-circle"></i> Dados da API • ' + (source === 'meta' ? 'Meta Ads' : 'Google Ads');
+                        statusEl.innerHTML = '<i class="fi fi-rr-check-circle"></i> Dados da API • ' + (source === 'meta' ? 'Meta Ads' : 'Google Ads');
                         statusEl.style.color = '#4ade80';
                     } else {
                         // No API data, fall back to CRM
-                        statusEl.textContent = '<i class="fi fi-rr-clipboard-list"></i> Dados do CRM (API não configurada)';
+                        statusEl.innerHTML = '<i class="fi fi-rr-clipboard-list"></i> Dados do CRM (API não configurada)';
                         statusEl.style.color = 'var(--text-muted)';
                         loadCrmLeadsForMetricas(source, false);
                     }
                 }).catch(function (err) {
-                    statusEl.textContent = '<i class="fi fi-rr-triangle-warning"></i> Erro ao conectar com a API de anúncios. Usando dados do CRM.';
+                    statusEl.innerHTML = '<i class="fi fi-rr-triangle-warning"></i> Erro ao conectar com a API de anúncios. Usando dados do CRM.';
                     statusEl.style.color = '#f87171';
                     loadCrmLeadsForMetricas(source, false);
                 });
@@ -13502,7 +14134,7 @@
             function openLeadModal(id) {
                 var l = crmLeads.find(function (x) { return x.id === id; });
                 if (!l) return;
-                document.getElementById('leadModalTitle').textContent = '<i class="fi fi-rr-pencil"></i> ' + esc(l.name);
+                document.getElementById('leadModalTitle').innerHTML = '<i class="fi fi-rr-pencil"></i> ' + esc(l.name);
                 document.getElementById('leadId').value = l.id;
                 document.getElementById('leadName').value = l.name;
                 document.getElementById('leadPhone').value = l.phone || '';
@@ -14822,7 +15454,7 @@
                 if (isRoteiroOnly) {
                     var applyBtn = document.createElement('button');
                     applyBtn.className = 'an-chat-apply-btn';
-                    applyBtn.textContent = '<i class="fi fi-rr-memo"></i> Aplicar ajustes no roteiro';
+                    applyBtn.innerHTML = '<i class="fi fi-rr-memo"></i> Aplicar ajustes no roteiro';
                     applyBtn.onclick = function () {
                         _anChatReport = newReport;
                         renderAnalysisReport(newReport);
@@ -14941,6 +15573,7 @@
                                     adminName: (result.user || {}).name || session.user.name,
                                     isGlobalAdmin: true
                                 };
+                                window._companyMode = _companyMode;
                             } else {
                                 _companyMode = {
                                     id: result.company.id,
@@ -14948,7 +15581,12 @@
                                     permissions: result.company.permissions || {},
                                     adminName: (result.user || {}).name || session.user.name
                                 };
+                                window._companyMode = _companyMode;
                             }
+                            var nameEl = document.getElementById('sidebarCompanyName');
+                            if (nameEl) nameEl.textContent = _companyMode.name;
+                            var iaNameEl = document.getElementById('iaChatCompanyName');
+                            if (iaNameEl) iaNameEl.textContent = _companyMode.name;
                             document.getElementById('loginOverlay').classList.add('hidden');
                             applyCompanyMode();
                             startPermissionPolling();
@@ -15001,16 +15639,16 @@
             // =====================================================================
             var _tabLabels = {
                 dashboard: '<i class="fi fi-rr-clipboard-list"></i> Tasks', conteudos: '<i class="fi fi-rr-document"></i> Conteúdos',
-                financeiro: '<i class="fi fi-rr-sack-dollar"></i> Financeiro', ia: '<svg class="svg-icon-robot" style="width:1.1em;height:1.1em;vertical-align:middle" viewBox="0 0 24 24"><path d="m21,23c0,.553-.448,1-1,1s-1-.447-1-1c0-2.206-1.794-4-4-4h-6c-2.206,0-4,1.794-4,4,0,.553-.448,1-1,1s-1-.447-1-1c0-3.309,2.691-6,6-6h6c3.309,0,6,2.691,6,6Zm1-15.5v2c0,.827-.673,1.5-1.5,1.5h-.5c0,2.206-1.794,4-4,4h-8c-2.206,0-4-1.794-4-4h-.5c-.827,0-1.5-.673-1.5-1.5v-2c0-.827.673-1.5,1.5-1.5h.5c0-2.206,1.794-4,4-4h3v-1c0-.553.448-1,1-1s1,.447,1,1v1h3c2.206,0,4,1.794,4,4h.5c.827,0,1.5.673,1.5,1.5Zm-4-1.5c0-1.103-.897-2-2-2h-8c-1.103,0-2,.897-2,2v5c0,1.103.897,2,2,2h8c1.103,0,2-.897,2-2v-5Zm-8.5,1c-.828,0-1.5.672-1.5,1.5s.672,1.5,1.5,1.5,1.5-.672,1.5-1.5-.672-1.5-1.5-1.5Zm5,0c-.828,0-1.5.672-1.5,1.5s.672,1.5,1.5,1.5,1.5-.672,1.5-1.5-.672-1.5-1.5-1.5Z"/></svg> IA Assistente',
+                financeiro: '<i class="fi fi-rr-sack-dollar"></i> Financeiro', ia: '<svg class="svg-icon-robot" style="width:1.1em;height:1.1em;vertical-align:middle" viewBox="0 0 24 24"><path d="m21,23c0,.553-.448,1-1,1s-1-.447-1-1c0-2.206-1.794-4-4-4h-6c-2.206,0-4,1.794-4,4,0,.553-.448,1-1,1s-1-.447-1-1c0-3.309,2.691-6,6-6h6c3.309,0,6,2.691,6,6Zm1-15.5v2c0,.827-.673,1.5-1.5,1.5h-.5c0,2.206-1.794-4,4-4h-8c-2.206,0-4-1.794-4-4h-.5c-.827,0-1.5-.673-1.5-1.5v-2c0-.827.673-1.5,1.5-1.5h.5c0-2.206,1.794-4,4-4h3v-1c0-.553.448-1,1-1s1,.447,1,1v1h3c2.206,0,4,1.794,4,4h.5c.827,0,1.5.673,1.5,1.5Zm-4-1.5c0-1.103-.897-2-2-2h-8c-1.103,0-2,.897-2,2v5c0,1.103.897,2,2,2h8c1.103,0,2-.897,2-2v-5Zm-8.5,1c-.828,0-1.5.672-1.5,1.5s.672,1.5,1.5,1.5,1.5-.672,1.5-1.5-.672-1.5-1.5-1.5Zm5,0c-.828,0-1.5.672-1.5,1.5s.672,1.5,1.5,1.5,1.5-.672,1.5-1.5-.672-1.5-1.5-1.5Z"/></svg> IA Assistente',
                 crm: '<i class="fi fi-rr-chart-histogram"></i> Leads', metricas: '<i class="fi fi-rr-chart-line-up"></i> Métricas',
                 analise: '<i class="fi fi-rr-search"></i> Analisar', wpp: '<i class="fi fi-rr-comment-alt"></i> WhatsApp',
-                empresas: '<i class="fi fi-rr-building"></i> Empresas', configuracoes: '<i class="fi fi-rr-settings"></i> Configurações'
+                empresas: '<i class="fi fi-rr-building"></i> Empresas', usuarios: '<i class="fi fi-rr-users"></i> Usuários', configuracoes: '<i class="fi fi-rr-settings"></i> Configurações'
             };
             var _aiTabs = { dashboard: 1, conteudos: 1, financeiro: 1, crm: 1, metricas: 1 };
 
             function empDefaultPerms() {
                 var o = {};
-                Object.keys(_tabLabels).forEach(function (k) { o[k] = { access: k !== 'empresas' && k !== 'configuracoes' }; });
+                Object.keys(_tabLabels).forEach(function (k) { o[k] = { access: k !== 'empresas' && k !== 'usuarios' && k !== 'configuracoes' }; });
                 o.ia.chat = true;
                 return o;
             }
@@ -15164,8 +15802,16 @@
                 api.companyListUsers(_companyMode.id).then(function (users) {
                     _companyUsersCache = users || [];
                     el.innerHTML = (users || []).map(function (u) {
+                        var roleLabel = u.role || 'colaborador';
+                        var roleBadgeClass = 'role-badge.' + roleLabel;
+                        if (roleLabel === 'admin') roleBadgeClass = 'role-badge.admin';
+                        else if (roleLabel === 'gestor') roleBadgeClass = 'role-badge.gestor';
+                        else roleBadgeClass = 'role-badge.colaborador';
+                        var sectorHtml = u.sector ? '<span class="sector-tag">' + esc(u.sector) + '</span>' : '';
                         return '<div class="emp-card" onclick="usrOpenForm(\'' + u.id + '\')">' +
                             '<div class="emp-name">' + esc(u.name) + '</div>' +
+                            '<span class="' + roleBadgeClass + '" style="margin-right:6px">' + roleLabel.charAt(0).toUpperCase() + roleLabel.slice(1) + '</span>' +
+                            (sectorHtml ? '<span style="margin-right:8px">' + sectorHtml + '</span>' : '') +
                             '<span class="emp-status ' + (u.active !== false ? 'active' : 'inactive') + '">' + (u.active !== false ? 'Ativo' : 'Inativo') + '</span>' +
                             '<button class="emp-del" onclick="event.stopPropagation();usrDelete(\'' + u.id + '\')"><i class="fi fi-rr-cross"></i></button></div>';
                     }).join('') || '<div style="color:var(--text-muted);font-size:0.85rem;padding:16px 0">Nenhum usuário cadastrado.</div>';
@@ -15174,14 +15820,172 @@
                 });
             }
 
+            function usrRenderPerms(perms) {
+                var html = '';
+                Object.keys(_tabLabels).forEach(function (key) {
+                    if (key === 'empresas' || key === 'usuarios' || key === 'configuracoes') return;
+                    var p = perms[key] || {};
+                    html += '<div class="emp-perm-row">' +
+                        '<span class="perm-label">' + (_tabLabels[key] || key) + '</span>' +
+                        '<div class="perm-toggles">' +
+                        '<label><input type="checkbox" data-perm="' + key + '" data-type="access" ' + (p.access !== false ? 'checked' : '') + ' onchange="toggleAccessPerm(this,\'' + key + '\')"> Acesso</label>' +
+                        (_aiTabs[key] ? '<label><input type="checkbox" data-perm="' + key + '" data-type="ai" ' + (p.ai !== false && p.access !== false ? 'checked' : '') + ' ' + (p.access === false ? 'disabled' : '') + '> IA</label>' : '') +
+                        (key === 'ia' ? '<label><input type="checkbox" data-perm="ia" data-type="chat" ' + (p.chat !== false ? 'checked' : '') + '> Chat</label>' : '') +
+                        '</div></div>';
+                });
+                document.getElementById('usrFormPerms').innerHTML = html;
+            }
+
+            var _usrRoleOpen = false;
+            var _usrSectorOpen = false;
+
+            function initUsrRoleDropdown() {
+                var drop = document.getElementById('usrRoleDrop');
+                drop.innerHTML = ROLES.map(function (r) {
+                    return '<div class="cs-opt" data-value="' + r.value + '" onclick="selectUsrRole(\'' + r.value + '\')">' + r.label + '</div>';
+                }).join('');
+            }
+            function toggleUsrRoleDropdown() {
+                _usrRoleOpen ? closeUsrRoleDropdown() : openUsrRoleDropdown();
+            }
+            function openUsrRoleDropdown() {
+                _usrRoleOpen = true;
+                initUsrRoleDropdown();
+                document.getElementById('usrRoleDrop').classList.add('visible');
+                document.getElementById('usrRoleTrigger').classList.add('open');
+                document.getElementById('usrRoleArrow').classList.add('open');
+            }
+            function closeUsrRoleDropdown() {
+                _usrRoleOpen = false;
+                document.getElementById('usrRoleDrop').classList.remove('visible');
+                document.getElementById('usrRoleTrigger').classList.remove('open');
+                document.getElementById('usrRoleArrow').classList.remove('open');
+            }
+            function selectUsrRole(value) {
+                document.getElementById('usrFormRole').value = value;
+                var label = '';
+                ROLES.forEach(function (r) { if (r.value === value) label = r.label; });
+                document.getElementById('usrRoleSelected').textContent = label || value;
+                document.getElementById('usrRoleSelected').style.color = '';
+                document.querySelectorAll('#usrRoleDrop .cs-opt').forEach(function (o) { o.classList.remove('selected'); });
+                var opt = document.querySelector('#usrRoleDrop .cs-opt[data-value="' + value + '"]');
+                if (opt) opt.classList.add('selected');
+                closeUsrRoleDropdown();
+            }
+
+            function initUsrSectorDropdown() {
+                var drop = document.getElementById('usrSectorDrop');
+                var sectors = {};
+                SECTORS.forEach(function (s) { sectors[s] = 1; });
+                _companyUsersCache.forEach(function (u) { if (u.sector) sectors[u.sector] = 1; });
+                var sorted = Object.keys(sectors).sort();
+                if (!sorted.length) {
+                    api.companyListUsers(_companyMode.id).then(function (users) {
+                        _companyUsersCache = users || [];
+                        (users || []).forEach(function (u) { if (u.sector && !sectors[u.sector]) { sectors[u.sector] = 1; sorted.push(u.sector); sorted.sort(); } });
+                        renderDrop(sorted);
+                    }).catch(function () { renderDrop(sorted); });
+                } else {
+                    renderDrop(sorted);
+                }
+                function renderDrop(list) {
+                    drop.innerHTML = list.map(function (s) {
+                        return '<div class="cs-opt" data-value="' + esc(s) + '" onclick="selectUsrSector(\'' + esc(s).replace(/'/g, "\\'") + '\')">' + esc(s) + '</div>';
+                    }).join('') +
+                        '<div class="cs-opt" data-value="__new__" onclick="selectUsrSector(\'__new__\')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:10px;color:var(--text-muted)">+ Outro (digitar)</div>';
+                }
+            }
+
+            function toggleUsrSectorDropdown() {
+                _usrSectorOpen ? closeUsrSectorDropdown() : openUsrSectorDropdown();
+            }
+            function openUsrSectorDropdown() {
+                _usrSectorOpen = true;
+                initUsrSectorDropdown();
+                document.getElementById('usrSectorDrop').classList.add('visible');
+                document.getElementById('usrSectorTrigger').classList.add('open');
+                document.getElementById('usrSectorArrow').classList.add('open');
+            }
+            function closeUsrSectorDropdown() {
+                _usrSectorOpen = false;
+                document.getElementById('usrSectorDrop').classList.remove('visible');
+                document.getElementById('usrSectorTrigger').classList.remove('open');
+                document.getElementById('usrSectorArrow').classList.remove('open');
+            }
+            function selectUsrSector(value) {
+                if (value === '__new__') {
+                    closeUsrSectorDropdown();
+                    var custom = prompt('Digite o nome do novo setor:');
+                    if (custom && custom.trim()) {
+                        custom = custom.trim();
+                        var drop = document.getElementById('usrSectorDrop');
+                        var existing = drop.querySelector('.cs-opt[data-value="' + esc(custom).replace(/'/g, "\\'") + '"]');
+                        if (!existing) {
+                            var opt = document.createElement('div');
+                            opt.className = 'cs-opt';
+                            opt.dataset.value = custom;
+                            opt.textContent = custom;
+                            opt.onclick = function () { selectUsrSector(custom); };
+                            drop.insertBefore(opt, drop.querySelector('[data-value="__new__"]'));
+                        }
+                        document.getElementById('usrFormSector').value = custom;
+                        document.getElementById('usrSectorSelected').textContent = custom;
+                        document.getElementById('usrSectorSelected').style.color = '';
+                    }
+                    return;
+                }
+                document.getElementById('usrFormSector').value = value;
+                document.getElementById('usrSectorSelected').textContent = value;
+                document.getElementById('usrSectorSelected').style.color = '';
+                document.querySelectorAll('#usrSectorDrop .cs-opt').forEach(function (o) { o.classList.remove('selected'); });
+                var opt = document.querySelector('#usrSectorDrop .cs-opt[data-value="' + esc(value).replace(/'/g, "\\'") + '"]');
+                if (opt) opt.classList.add('selected');
+                closeUsrSectorDropdown();
+            }
+
+            document.addEventListener('click', function (e) {
+                if (_usrRoleOpen && !e.target.closest('#usrRoleTrigger') && !e.target.closest('#usrRoleDrop')) {
+                    closeUsrRoleDropdown();
+                }
+                if (_usrSectorOpen && !e.target.closest('#usrSectorTrigger') && !e.target.closest('#usrSectorDrop')) {
+                    closeUsrSectorDropdown();
+                }
+            });
+
             function usrOpenForm(id) {
                 var overlay = document.getElementById('usrFormOverlay');
                 var usr = id ? (_companyUsersCache.find(function (u) { return u.id === id; }) || null) : null;
                 document.getElementById('usrFormTitle').textContent = usr ? 'Editar Usuário' : 'Novo Usuário';
                 document.getElementById('usrFormName').value = usr ? usr.name : '';
                 document.getElementById('usrFormPass').value = '';
+                _usrRoleOpen = false;
+                document.getElementById('usrRoleDrop').classList.remove('visible');
+                document.getElementById('usrRoleTrigger').classList.remove('open');
+                document.getElementById('usrRoleArrow').classList.remove('open');
+                var roleVal = usr ? (usr.role || 'colaborador') : 'colaborador';
+                selectUsrRole(roleVal);
+                _usrSectorOpen = false;
+                document.getElementById('usrSectorDrop').classList.remove('visible');
+                document.getElementById('usrSectorTrigger').classList.remove('open');
+                document.getElementById('usrSectorArrow').classList.remove('open');
+                var sectorVal = usr ? (usr.sector || '') : '';
+                document.getElementById('usrFormSector').value = sectorVal;
+                document.getElementById('usrSectorSelected').textContent = sectorVal || '-- Selecione --';
+                document.getElementById('usrSectorSelected').style.color = sectorVal ? '' : 'var(--text-dim)';
                 document.getElementById('usrFormActive').checked = usr ? (usr.active !== false) : true;
                 overlay.dataset.editId = usr ? usr.id : '';
+                var savedPerms = usr ? (usr.permissions || {}) : {};
+                var perms = {};
+                Object.keys(_tabLabels).forEach(function (k) {
+                    if (k === 'empresas' || k === 'usuarios' || k === 'configuracoes') return;
+                    var defaults = { access: true, ai: true };
+                    if (k === 'ia') defaults.chat = true;
+                    perms[k] = Object.assign({}, defaults, savedPerms[k] || {});
+                });
+                Object.keys(savedPerms).forEach(function (k) {
+                    if (!perms[k]) perms[k] = savedPerms[k];
+                });
+                usrRenderPerms(perms);
                 overlay.style.display = 'flex';
             }
 
@@ -15195,14 +15999,22 @@
                 var pass = document.getElementById('usrFormPass').value.trim();
                 if (!editId && !pass) { showToast('Informe uma senha'); return; }
                 var active = document.getElementById('usrFormActive').checked;
+                var role = document.getElementById('usrFormRole').value;
+                var sector = document.getElementById('usrFormSector').value.trim();
+                var perms = {};
+                document.querySelectorAll('#usrFormPerms input[type="checkbox"]').forEach(function (cb) {
+                    var perm = cb.dataset.perm, type = cb.dataset.type;
+                    if (!perms[perm]) perms[perm] = {};
+                    perms[perm][type] = cb.checked;
+                });
 
                 var promise;
                 if (editId) {
-                    var data = { name: name, active: active };
+                    var data = { name: name, active: active, role: role, sector: sector, permissions: perms };
                     if (pass) data.password = pass;
                     promise = api.companyUpdateUser(editId, data);
                 } else {
-                    promise = api.companyCreateUser(_companyMode.id, name, pass, 'user');
+                    promise = api.companyCreateUser(_companyMode.id, name, pass, role, sector, perms);
                 }
                 promise.then(function () {
                     usrCloseForm();
@@ -15227,6 +16039,7 @@
             //  COMPANY MODE
             // =====================================================================
             var _companyMode = null; // empresa object when logged in as company admin
+            window._companyMode = null;
 
             function isCompanyMode() { return !!_companyMode; }
 
@@ -15247,6 +16060,7 @@
                 var isGlobalAdmin = (companyName.toLowerCase() === 'admin');
 
                 api.companyLogin(companyName, adminName, pass).then(function (result) {
+                    var userPerms = (result.user && result.user.permissions) || null;
                     if (isGlobalAdmin) {
                         _companyMode = {
                             id: result.company.id,
@@ -15255,13 +16069,22 @@
                             adminName: result.user.name,
                             isGlobalAdmin: true
                         };
+                        window._companyMode = _companyMode;
+                        setCurrentUserPermissions(null);
                     } else {
                         _companyMode = { id: result.company.id, name: result.company.name, permissions: result.company.permissions || {}, adminName: result.user.name };
+                        window._companyMode = _companyMode;
+                        setCurrentUserPermissions(userPerms || result.company.permissions || null);
                     }
+                    var nameEl = document.getElementById('sidebarCompanyName');
+                    if (nameEl) nameEl.textContent = _companyMode.name;
+                    var iaNameEl = document.getElementById('iaChatCompanyName');
+                    if (iaNameEl) iaNameEl.textContent = _companyMode.name;
                     document.getElementById('loginOverlay').classList.add('hidden');
                     applyCompanyMode();
                     startPermissionPolling();
                     showToast('Bem-vindo, ' + result.user.name);
+                    checkFirstLogin();
                     render();
                     try { renderFinanceCharts(); } catch (e) { }
                     btn.disabled = false; btn.textContent = 'Entrar';
@@ -15273,6 +16096,8 @@
 
             function empCompanyLogout() {
                 _companyMode = null;
+                window._companyMode = null;
+                _currentUserPermissions = null;
                 if (window._permPollInterval) clearInterval(window._permPollInterval);
                 api.companyLogout();
                 document.getElementById('loginEmpresaName').value = '';
@@ -15280,6 +16105,17 @@
                 document.getElementById('loginEmpresaPass').value = '';
                 document.getElementById('loginOverlay').classList.remove('hidden');
                 applyCompanyMode();
+            }
+
+            var _currentUserPermissions = null;
+
+            function setCurrentUserPermissions(perms) {
+                _currentUserPermissions = perms;
+            }
+            function hasTabAccess(key) {
+                if (!_currentUserPermissions) return true;
+                var p = _currentUserPermissions[key];
+                return p && p.access !== false;
             }
 
             function applyCompanyMode() {
@@ -15290,33 +16126,20 @@
                     if (!key) return;
                     if (isGlobalAdmin) { tab.style.display = ''; return; }
                     if (key === 'empresas') {
-                        tab.style.display = isCompany ? 'none' : '';
+                        tab.style.display = 'none';
                         return;
                     }
                     if (key === 'usuarios') {
-                        tab.style.display = isCompany ? '' : 'none';
+                        tab.style.display = '';
                         return;
                     }
                     if (key === 'configuracoes') {
                         tab.style.display = 'none';
                         return;
                     }
-                    if (isCompany) {
-                        var perms = _companyMode.permissions || {};
-                        var p = perms[key] || {};
-                        tab.style.display = p.access ? '' : 'none';
-                    } else {
-                        tab.style.display = '';
-                    }
+                    tab.style.display = '';
                 });
-                document.getElementById('sidebarSettingsBtn').style.display = isGlobalAdmin ? '' : (isCompany ? 'none' : '');
-                if (isCompany) {
-                    var active = document.querySelector('.sidebar-nav .tab.active');
-                    if (active && active.style.display === 'none') {
-                        var firstVisible = document.querySelector('.sidebar-nav .tab[data-tab]:not([style*="display: none"])');
-                        if (firstVisible) firstVisible.click();
-                    }
-                }
+                document.getElementById('sidebarSettingsBtn').style.display = isGlobalAdmin ? '' : 'none';
                 if (!isCompany && typeof api !== 'undefined') {
                     document.getElementById('sidebarSettingsBtn').style.display = api.isAdmin() ? '' : 'none';
                 }
@@ -15358,11 +16181,95 @@
                             if (JSON.stringify(newPerms) !== JSON.stringify(oldPerms)) {
                                 _companyMode.permissions = newPerms;
                                 applyCompanyMode();
-                                showToast('Permissões atualizadas');
                             }
                         }
                     }).catch(function () {});
                 }, 30000);
+            }
+
+            // =====================================================================
+            //  COMPANY DESCRIPTION (first login)
+            // =====================================================================
+            function getCompanyDescription() {
+                return _companyMode ? (_companyMode.description || '') : '';
+            }
+
+            function openCompanyDescription() {
+                var overlay = document.getElementById('companyDescOverlay');
+                document.getElementById('companyDescSector').value = _companyMode.descriptionSector || '';
+                document.getElementById('companyDescText').value = _companyMode.description || '';
+                overlay.style.display = 'flex';
+            }
+
+            function saveCompanyDescription() {
+                var sector = document.getElementById('companyDescSector').value.trim();
+                var desc = document.getElementById('companyDescText').value.trim();
+                if (!sector && !desc) { showToast('Preencha pelo menos um dos campos'); return; }
+                if (_companyMode) {
+                    _companyMode.descriptionSector = sector;
+                    _companyMode.description = desc;
+                    try { localStorage.setItem('veltris_company_desc_' + _companyMode.id, JSON.stringify({ sector: sector, description: desc })); } catch (e) {}
+                    api.companyUpdate(_companyMode.id, { description_sector: sector, description: desc }).catch(function () {});
+                }
+                document.getElementById('companyDescOverlay').style.display = 'none';
+                showToast('Informações salvas! A IA usará esse contexto para gerar sugestões mais relevantes.');
+            }
+
+            function skipCompanyDescription() {
+                document.getElementById('companyDescOverlay').style.display = 'none';
+                var overlay = document.getElementById('skipDescOverlay');
+                overlay.style.display = 'flex';
+                overlay.onclick = function (e) {
+                    if (e.target === overlay) {
+                        if (overlay._skipTimer) clearInterval(overlay._skipTimer);
+                        overlay.style.display = 'none';
+                    }
+                };
+                var btn = document.getElementById('skipDescConfirmBtn');
+                var fill = document.getElementById('skipDescTimerFill');
+                btn.disabled = true;
+                btn.textContent = 'Aguarde 3s...';
+                btn.style.opacity = '0.5';
+                fill.style.width = '100%';
+                var start = Date.now();
+                var timer = setInterval(function () {
+                    var elapsed = Date.now() - start;
+                    var pct = Math.max(0, 100 - (elapsed / 3000 * 100));
+                    fill.style.width = pct + '%';
+                    if (elapsed >= 3000) {
+                        clearInterval(timer);
+                        fill.style.width = '0%';
+                        btn.disabled = false;
+                        btn.textContent = 'Sim, pular';
+                        btn.style.opacity = '1';
+                    }
+                }, 50);
+                overlay._skipTimer = timer;
+            }
+
+            function confirmSkipDescription() {
+                var overlay = document.getElementById('skipDescOverlay');
+                if (overlay._skipTimer) clearInterval(overlay._skipTimer);
+                overlay.style.display = 'none';
+                showToast('Você pode preencher a descrição da empresa em Configurações quando quiser.');
+            }
+
+            function checkFirstLogin() {
+                if (!isCompanyMode() || !_companyMode) return;
+                var hasDesc = _companyMode.description || _companyMode.descriptionSector;
+                if (hasDesc) return;
+                try {
+                    var saved = localStorage.getItem('veltris_company_desc_' + _companyMode.id);
+                    if (saved) {
+                        var parsed = JSON.parse(saved);
+                        if (parsed.sector || parsed.description) {
+                            _companyMode.descriptionSector = parsed.sector || '';
+                            _companyMode.description = parsed.description || '';
+                            return;
+                        }
+                    }
+                } catch (e) {}
+                setTimeout(openCompanyDescription, 800);
             }
 
             // Initialize
@@ -15444,6 +16351,46 @@
         </div>
         <button class="wpp-minimized-icon" id="wppMinimizedIcon" onclick="restoreWppPanel()" title="Abrir WhatsApp"><i
                 class="fi fi-rr-comment-alt"></i></button>
+        <div class="custom-cursor" id="customCursor" style="left:50vw;top:50vh"></div>
+        <script>
+            (function() {
+                var c = document.getElementById('customCursor');
+                if (!c) return;
+                var cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+                var t = [], n = 5, p = [];
+                for (var i = 0; i < n; i++) {
+                    var d = document.createElement('div');
+                    d.className = 'custom-cursor trail';
+                    d.style.cssText = 'width:' + (7 - i * 0.6) + 'px;height:' + (7 - i * 0.6) + 'px;left:' + cx + 'px;top:' + cy + 'px';
+                    document.body.insertBefore(d, document.body.firstChild);
+                    t.push(d);
+                    p.push({ x: cx, y: cy });
+                }
+                var h = true, raf = null;
+                function animate() {
+                    var mx = parseFloat(c.style.left), my = parseFloat(c.style.top);
+                    if (isNaN(mx)) mx = cx;
+                    if (isNaN(my)) my = cy;
+                    for (var j = 0; j < n; j++) {
+                        var targetX = j === 0 ? mx : p[j - 1].x;
+                        var targetY = j === 0 ? my : p[j - 1].y;
+                        p[j].x += (targetX - p[j].x) * 0.35;
+                        p[j].y += (targetY - p[j].y) * 0.35;
+                        t[j].style.left = p[j].x + 'px';
+                        t[j].style.top = p[j].y + 'px';
+                    }
+                    raf = requestAnimationFrame(animate);
+                }
+                animate();
+                document.addEventListener('mousemove', function(e) {
+                    c.style.left = e.clientX + 'px';
+                    c.style.top = e.clientY + 'px';
+                    if (h) { h = false; c.style.opacity = '0.85'; for (var k = 0; k < n; k++) t[k].style.opacity = String(0.3 - k * 0.05); }
+                });
+                document.addEventListener('mouseleave', function() { h = true; c.style.opacity = '0'; for (var j = 0; j < n; j++) t[j].style.opacity = '0'; });
+                document.addEventListener('mouseenter', function() { if (h) { h = false; c.style.opacity = '0.85'; for (var k = 0; k < n; k++) t[k].style.opacity = String(0.3 - k * 0.05); } });
+            })();
+        </script>
         <script src="wpp-crm.js"></script>
 </body>
 

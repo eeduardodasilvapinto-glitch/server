@@ -22,6 +22,7 @@ window.VeltrisWPP = (() => {
     wsReconnectTimer: null,
     realtimeSub: null,
     pollingInterval: null,
+    realtimeInterval: null,
     currentUser: null,
     activeView: 'dashboard',
   };
@@ -74,10 +75,13 @@ window.VeltrisWPP = (() => {
 
   /* ----------------------------- API helpers ----------------------------- */
   async function apiGet(table, params) {
+    if (S._serverSessionId) { window._supabaseBlocked = true; return []; }
     try {
       var result = await window._supaGet(table, params);
       return result.data || [];
-    } catch (e) { if (typeof console !== 'undefined' && console.error) { console.error('apiGet error'); } return []; }
+    } catch (e) {
+      return [];
+    }
   }
   async function apiPost(table, data) {
     try {
@@ -121,13 +125,39 @@ window.VeltrisWPP = (() => {
       case 'whatsapp': renderWhatsapp(); break;
       case 'clientes': renderClientes(); break;
       case 'agenda': renderAgenda(); break;
+      case 'metricas': renderMetricas(); break;
+      case 'disparos': renderDisparos(); break;
+      case 'tags': renderTags(); break;
     }
   }
 
   /* ============================ CONNECTION ============================ */
   async function loadSessions() {
     if (!window.api || !api.isLoggedIn()) { S.sessions = []; return; }
-    S.sessions = await apiGet('whatsapp_sessions', {});
+    // Try to find active server session
+    try {
+      var listResp = await fetch(_wppServerUrl + '/sessions')
+      if (listResp.ok) {
+        var listData = await listResp.json()
+        var activeSrv = (listData.sessions || []).find(function(s) { return s.status === 'connected' }) || (listData.sessions || []).find(function(s) { return s.status !== 'disconnected' })
+        if (activeSrv) {
+          S._serverSessionId = activeSrv.sessionId
+          S.activeSessionId = activeSrv.sessionId
+          S.connected = activeSrv.status === 'connected'
+          S.sessions = [{ id: activeSrv.sessionId, status: activeSrv.status, phone: activeSrv.phone }]
+          renderConnectionStatus()
+          if (S.connected) {
+            startPolling()
+            startRealtime()
+            loadChats()
+          } else {
+            startWppServerPoll(activeSrv.sessionId)
+          }
+          return
+        }
+      }
+    } catch (e) {}
+    S.sessions = await apiGet('whatsapp_sessions', S.currentUser ? { user_id: 'eq.' + S.currentUser } : {});
     S.activeSessionId = S.sessions.find(s => s.status === 'connected')?.id || null;
     S.connected = !!S.activeSessionId;
     renderConnectionStatus();
@@ -138,92 +168,179 @@ window.VeltrisWPP = (() => {
   }
 
   function renderConnectionStatus() {
-    const container = el('wppConnectionStatus');
+    var container = el('wppConnectionStatus');
     if (!container) return;
-    const session = S.sessions.find(s => s.id === S.activeSessionId) || S.sessions[0];
+    var session = S.sessions.find(function (s) { return s.id === S.activeSessionId; }) || S.sessions[0];
     if (S.connected) {
-      container.innerHTML = `
-        <div class="wpp-connect-card">
-          <div class="wpp-connect-status">
-            <span class="wpp-status-dot connected"></span>
-            <span style="font-size:0.82rem;color:var(--text);font-weight:600">WhatsApp Conectado</span>
-            ${session ? `<span style="font-size:0.68rem;color:var(--text-muted)">${escHtml(session.phone || session.name || 'WhatsApp')}</span>` : ''}
-          </div>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-outline" onclick="VeltrisWPP.disconnect()" style="font-size:0.72rem">Desconectar</button>
-          </div>
-        </div>`;
+      container.innerHTML =
+        '<div class="wpp-connect-card">' +
+          '<div class="wpp-connect-status">' +
+            '<span class="wpp-status-dot connected"></span>' +
+            '<span style="font-size:0.82rem;color:var(--text);font-weight:600">WhatsApp Conectado</span>' +
+            (session ? '<span style="font-size:0.68rem;color:var(--text-muted)">' + escHtml(session.phone || session.name || 'WhatsApp') + '</span>' : '') +
+          '</div>' +
+          '<div style="display:flex;gap:6px">' +
+            '<button class="btn btn-outline" onclick="VeltrisWPP.disconnect()" style="font-size:0.72rem">Desconectar</button>' +
+          '</div>' +
+        '</div>';
     } else {
-      const activeSession = S.sessions.find(s => s.status === 'connecting' || s.status === 'expired');
+      var activeSession = S.sessions.find(function (s) { return s.status === 'connecting' || s.status === 'expired'; });
       if (activeSession && activeSession.qr_code) {
         S.qrCode = activeSession.qr_code;
-        container.innerHTML = `
-          <div class="wpp-connect-card" style="flex-direction:column;align-items:center">
-            <div class="wpp-connect-status">
-              <span class="wpp-status-dot ${activeSession.status === 'expired' ? 'expired' : 'connecting'}"></span>
-              <span style="font-size:0.82rem;color:var(--text);font-weight:600">
-                ${activeSession.status === 'expired' ? 'QR Expirado' : 'Aguardando Leitura...'}
-              </span>
-            </div>
-            <div class="wpp-qr-container">
-              <img src="${escHtml(activeSession.qr_code)}" alt="QR Code" />
-              <p>Aponte a cÃ¢mera do WhatsApp para este QR Code</p>
-            </div>
-            <button class="btn btn-outline" onclick="VeltrisWPP.newSession()" style="font-size:0.75rem">Gerar Novo QR</button>
-          </div>`;
+        container.innerHTML =
+          '<div class="wpp-connect-card" style="flex-direction:column;align-items:center">' +
+            '<div class="wpp-connect-status">' +
+              '<span class="wpp-status-dot ' + (activeSession.status === 'expired' ? 'expired' : 'connecting') + '"></span>' +
+              '<span style="font-size:0.82rem;color:var(--text);font-weight:600">' +
+                (activeSession.status === 'expired' ? 'QR Expirado' : 'Aguardando Leitura...') +
+              '</span>' +
+            '</div>' +
+            '<div class="wpp-qr-container">' +
+              '<img src="' + escHtml(activeSession.qr_code) + '" alt="QR Code" />' +
+              '<p>Aponte a câmera do WhatsApp para este QR Code</p>' +
+            '</div>' +
+            '<button class="btn btn-outline" onclick="VeltrisWPP.newSession()" style="font-size:0.75rem">Gerar Novo QR</button>' +
+          '</div>';
+      } else if (activeSession) {
+        container.innerHTML =
+          '<div class="wpp-connect-card" style="flex-direction:column;align-items:center">' +
+            '<div class="wpp-connect-status">' +
+              '<span class="wpp-status-dot connecting"></span>' +
+              '<span style="font-size:0.82rem;color:var(--text);font-weight:600">Gerando QR Code...</span>' +
+            '</div>' +
+            '<button class="btn btn-outline" onclick="VeltrisWPP.newSession()" style="font-size:0.75rem">Gerar Novo QR</button>' +
+          '</div>';
       } else {
-        container.innerHTML = `
-          <div class="wpp-connect-card">
-            <div class="wpp-connect-status">
-              <span class="wpp-status-dot disconnected"></span>
-              <span style="font-size:0.82rem;color:var(--text-muted)">WhatsApp Desconectado</span>
-            </div>
-            <button class="btn btn-save" onclick="VeltrisWPP.newSession()" style="font-size:0.78rem">Conectar WhatsApp</button>
-          </div>`;
+        var serverHint = window._wppServerPoll ? '' : '<div style="font-size:0.65rem;color:var(--text-muted);margin-top:6px">Servidor local: http://localhost:3123</div>';
+        container.innerHTML =
+          '<div class="wpp-connect-card">' +
+            '<div class="wpp-connect-status">' +
+              '<span class="wpp-status-dot disconnected"></span>' +
+              '<span style="font-size:0.82rem;color:var(--text-muted)">WhatsApp Desconectado</span>' +
+            '</div>' +
+            '<button class="btn btn-save" onclick="VeltrisWPP.newSession()" style="font-size:0.78rem">Conectar WhatsApp</button>' +
+            serverHint +
+          '</div>';
       }
     }
   }
 
+  var _wppServerUrl = window.location.port === '3123' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:3123' : 'https://server-production-d7c0.up.railway.app'
+
+  function getServerSessionId() {
+    return S._serverSessionId || null
+  }
+
   async function newSession() {
-    const res = await apiPost('whatsapp_sessions', { status: 'connecting' });
-    if (res && res.id) {
-      S.sessions.push(res);
-      renderConnectionStatus();
-      // Poll for QR
-      const poll = setInterval(async () => {
-        const sessions = await apiGet('whatsapp_sessions', {});
-        const updated = sessions.find(s => s.id === res.id);
-        if (updated) {
-          Object.assign(res, updated);
-          if (updated.qr_code) {
-            renderConnectionStatus();
-          }
-          if (updated.status === 'connected') {
-            clearInterval(poll);
-            S.connected = true;
-            S.activeSessionId = updated.id;
-            renderConnectionStatus();
-            startPolling();
-            startRealtime();
-          }
-          if (updated.status === 'expired') {
-            clearInterval(poll);
-            renderConnectionStatus();
+    if (typeof console !== 'undefined') console.log('newSession() called')
+    var sessId = null
+    try {
+      var resp = await fetch(_wppServerUrl + '/connect?user_id=' + encodeURIComponent(S.currentUser || ''))
+      if (resp.ok) {
+        var data = await resp.json()
+        sessId = data.sessionId
+      } else {
+        var errText = await resp.text().catch(function() { return '' })
+        if (typeof console !== 'undefined') console.warn('Server connect failed:', resp.status, errText)
+        if (typeof showToast !== 'undefined') showToast('Servidor retornou erro ' + resp.status + '. Verifique o terminal do servidor.')
+      }
+    } catch (e) {
+      if (typeof console !== 'undefined') console.warn('Server connect error:', e.message)
+      if (typeof showToast !== 'undefined') showToast('Erro de conexão com servidor: ' + e.message)
+    }
+
+    if (sessId) {
+      S._serverSessionId = sessId
+      S.activeSessionId = sessId
+      S.sessions = [{ id: sessId, status: 'connecting' }]
+      renderConnectionStatus()
+      startWppServerPoll(sessId)
+      if (typeof showToast !== 'undefined') showToast('Conectando WhatsApp...')
+      return
+    }
+
+    if (typeof showToast !== 'undefined') showToast('Servidor WhatsApp não encontrado em ' + _wppServerUrl + '. Verifique se o servidor está rodando.')
+    renderConnectionStatus()
+  }
+
+  function startWppServerPoll(sessionId) {
+    if (window._wppServerPoll) clearInterval(window._wppServerPoll)
+    var pollCount = 0
+    var qrShown = false
+    window._wppServerPoll = setInterval(async function () {
+      pollCount++
+      try {
+        // Show QR code
+        var qrResp = await fetch(_wppServerUrl + '/qr?sessionId=' + encodeURIComponent(sessionId))
+        if (qrResp.ok) {
+          var qrData = await qrResp.json()
+          if (qrData.qr_code && qrData.qr_code !== S._lastQr) {
+            S._lastQr = qrData.qr_code
+            qrShown = true
+            S.sessions = [{ id: sessionId, qr_code: qrData.qr_code, status: 'connecting' }]
+            renderConnectionStatus()
           }
         }
-      }, 3000);
-    }
+        // Check health for connected status
+        var healthResp = await fetch(_wppServerUrl + '/health?sessionId=' + encodeURIComponent(sessionId))
+        if (healthResp.ok) {
+          var hData = await healthResp.json()
+          if (hData.connected) {
+            S.connected = true; S.activeSessionId = sessionId
+            if (window._wppServerPoll) { clearInterval(window._wppServerPoll); window._wppServerPoll = null }
+            renderConnectionStatus(); startPolling(); loadChats()
+            return
+          }
+        }
+        // Force stop polling after too many attempts if QR was shown
+        if (pollCount > 25 && qrShown) {
+          if (window._wppServerPoll) { clearInterval(window._wppServerPoll); window._wppServerPoll = null }
+        }
+      } catch (e) {}
+    }, 5000)
+  }
+
+  async function syncServerContacts(sessionId) {
+    try {
+      var resp = await fetch(_wppServerUrl + '/contacts?sessionId=' + encodeURIComponent(sessionId))
+      if (!resp.ok) return
+      var data = await resp.json()
+      if (!data.contacts || !data.contacts.length) return
+      var existing = await apiGet('contacts', {})
+      var existingPhones = {}
+      ;(existing || []).forEach(function (c) { if (c.phone) existingPhones[c.phone.replace(/\D/g, '')] = c })
+      var added = 0
+      for (var i = 0; i < data.contacts.length; i++) {
+        var c = data.contacts[i]
+        var phone = c.phone.replace(/\D/g, '')
+        if (existingPhones[phone]) continue
+        var lastContacted = c.lastMsgTimestamp ? new Date(c.lastMsgTimestamp * 1000).toISOString() : null
+        var r = await apiPost('contacts', {
+          name: c.name, phone: c.phone, source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: lastContacted
+        })
+        if (r && r.id) { added++; existingPhones[phone] = r }
+      }
+      if (added && typeof showToast !== 'undefined') showToast(added + ' contato(s) sincronizados do WhatsApp')
+      S.leads = await apiGet('contacts', {})
+      filterLeads()
+    } catch (e) {}
   }
 
   async function disconnect() {
-    if (S.activeSessionId) {
-      await apiPatch('whatsapp_sessions', S.activeSessionId, { status: 'disconnected' });
+    var sid = S._serverSessionId || S.activeSessionId
+    if (sid) {
+      try { await fetch(_wppServerUrl + '/disconnect?sessionId=' + encodeURIComponent(sid), { method: 'POST' }) } catch (e) {}
+      try { await apiPatch('whatsapp_sessions', sid, { status: 'disconnected' }) } catch (e) {}
     }
+    if (window._wppServerPoll) { clearInterval(window._wppServerPoll); window._wppServerPoll = null }
     S.connected = false;
     S.activeSessionId = null;
+    S._serverSessionId = null;
     S.chats = [];
     S.activeChatId = null;
     S.messages = [];
+    S._lastQr = null;
+    S.sessions = [];
     stopPolling();
     stopRealtime();
     renderConnectionStatus();
@@ -235,13 +352,130 @@ window.VeltrisWPP = (() => {
   /* ============================ CHATS ============================ */
   async function loadChats() {
     if (!S.connected) return;
-    S.chats = await apiGet('whatsapp_chats', {});
+    // Ensure chat view container exists
+    var chatListEl = document.getElementById('wcChatList');
+    if (!chatListEl) {
+      renderConversasChatView();
+      chatListEl = document.getElementById('wcChatList');
+    }
+    if (chatListEl && !chatListEl.querySelector('.wc-chat-item')) chatListEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem">Carregando conversas...</div>';
+    loadLabels()
+    // Also load chat-label associations
+    if (S._serverSessionId && !S._chatLabels) {
+      S._chatLabels = {}
+      fetch(_wppServerUrl + '/labels?sessionId=' + encodeURIComponent(S._serverSessionId)).then(function(r){return r.json()}).then(function(d){
+        var lbls = d.labels || []
+        if (lbls.length) {
+          // For each label, we'd need to query chat-labels per chat
+          // For now, just mark that we have labels
+        }
+      }).catch(function(){})
+    }
+    if (S._serverSessionId) {
+      try {
+        var resp = await fetch(_wppServerUrl + '/chats?sessionId=' + encodeURIComponent(S._serverSessionId))
+        if (resp.ok) {
+          var data = await resp.json()
+          S.chats = data.chats || []
+          // Load contacts from server to get proper names
+          var contResp = await fetch(_wppServerUrl + '/contacts?sessionId=' + encodeURIComponent(S._serverSessionId))
+          if (contResp.ok) {
+            var contData = await contResp.json()
+            if (contData.contacts) {
+              contData.contacts.forEach(function(ct) {
+                var phone = ct.phone
+                S.contacts[phone] = { name: ct.name, phone: phone }
+                // Also match by chat jid patterns
+                if (ct.jid) S.contacts[ct.jid] = { name: ct.name, phone: phone }
+              })
+            }
+          }
+          // Load contacts from Supabase contacts table via server
+          try {
+            var dbContResp = await fetch(_wppServerUrl + '/db-contacts?sessionId=' + encodeURIComponent(S._serverSessionId))
+            if (dbContResp.ok) {
+              var dbContData = await dbContResp.json()
+              if (dbContData.contacts) {
+                dbContData.contacts.forEach(function(c) {
+                  if (c.name && c.name !== c.phone && !c.name.startsWith('{')) {
+                    if (c.phone) S.contacts[c.phone] = { name: c.name, phone: c.phone }
+                    // Also try without country code
+                    var short = c.phone.replace(/^55/, '')
+                    if (short !== c.phone) S.contacts[short] = { name: c.name, phone: c.phone }
+                    // Also try with country code
+                    var full = '55' + c.phone.replace(/^55/, '')
+                    S.contacts[full] = { name: c.name, phone: c.phone }
+                    if (c.phone.includes('@')) S.contacts[c.phone.split('@')[0]] = { name: c.name, phone: c.phone }
+                  }
+                })
+              }
+            }
+          } catch (e) {}
+          renderChatList()
+          return
+        }
+      } catch (e) {}
+    }
+    S.chats = await apiGet('whatsapp_chats', S.currentUser ? { user_id: 'eq.' + S.currentUser, order: 'updated_at.desc' } : { order: 'updated_at.desc' });
     renderChatList();
+  }
+
+  async function loadLabels() {
+    if (!S._serverSessionId) return
+    try {
+      var r = await fetch(_wppServerUrl + '/labels?sessionId=' + encodeURIComponent(S._serverSessionId))
+      if (r.ok) { var d = await r.json(); S._labels = d.labels || [] }
+      // Load chat-label assocs for all chats
+      S._chatLabels = {}
+      var cr = await fetch(_wppServerUrl + '/chats?sessionId=' + encodeURIComponent(S._serverSessionId))
+      if (cr.ok) { var cd = await cr.json(); var chats = cd.chats || []
+        for (var ci = 0; ci < chats.length; ci++) {
+          var c = chats[ci]; var jid = c.remote_jid || ''
+          if (jid) {
+            var lr = await fetch(_wppServerUrl + '/chat-labels?sessionId=' + encodeURIComponent(S._serverSessionId) + '&chatId=' + encodeURIComponent(jid))
+            if (lr.ok) { var ld = await lr.json(); var lbls = ld.labels || []
+              if (lbls.length) { S._chatLabels[jid] = lbls.map(function(l){return l.id}) }
+            }
+          }
+        }
+      }
+    } catch(e) {}
+    renderChatFilter()
+  }
+  function renderChatFilter() {
+    var bar = document.getElementById('wcFilterBar')
+    if (!bar) return
+    // Collect tags from all contacts
+    var allTags = {}
+    for (var ci = 0; ci < S.chats.length; ci++) {
+      var chat = S.chats[ci]
+      if (chat.contact_id && S.contacts[chat.contact_id] && S.contacts[chat.contact_id].tags) {
+        for (var t of S.contacts[chat.contact_id].tags) { allTags[t] = (allTags[t] || 0) + 1 }
+      }
+    }
+    var tagNames = Object.keys(allTags).sort()
+    var html = '<button class="wc-filter-btn' + (!_wcLabelFilter ? ' active' : '') + '" onclick="VeltrisWPP.setLabelFilter(\'\')">Todas</button>'
+    for (var tn of tagNames) {
+      html += '<button class="wc-filter-btn' + (_wcLabelFilter === 'tag:' + tn ? ' active' : '') + '" onclick="VeltrisWPP.setLabelFilter(\'tag:' + tn + '\')">' + escHtml(tn) + '</button>'
+    }
+    bar.innerHTML = html
+    bar.style.display = tagNames.length ? '' : 'none'
+  }
+  function getChatTags(chat) {
+    if (chat.contact_id && S.contacts[chat.contact_id]) return S.contacts[chat.contact_id].tags || []
+    return []
+  }
+  function setLabelFilter(labelId) {
+    _wcLabelFilter = labelId
+    renderChatFilter()
+    renderChatList()
   }
 
   function renderChatList() {
     const container = el('wcChatList');
     if (!container) return;
+    // Render filter bar
+    renderChatFilter()
     if (S.chats.length === 0) {
       container.style.display = 'flex';
       container.style.alignItems = 'center';
@@ -255,10 +489,26 @@ window.VeltrisWPP = (() => {
     container.style.display = '';
     container.style.height = '';
     container.style.color = '';
-    container.innerHTML = S.chats.map(c => {
-      const contact = S.contacts[c.contact_id];
-      const name = contact?.name || c.contact_name || c.remote_jid || 'Desconhecido';
-      const lastMsg = c.last_message?.text || c.last_message || '';
+    var chatsToRender = S.chats
+    if (_wcLabelFilter) {
+      var filterTag = _wcLabelFilter.replace('tag:', '')
+      chatsToRender = S.chats.filter(function(c) {
+        var tags = getChatTags(c)
+        return tags.includes(filterTag)
+      })
+    }
+    container.innerHTML = chatsToRender.map(c => {
+      var chatPhone = (c.remote_jid || '').split('@')[0]
+      var contact = S.contacts[c.contact_id] || S.contacts[chatPhone] || S.contacts[c.remote_jid]
+      var rawName = contact?.name || c.contact_name || c.remote_jid || '';
+      var name = rawName;
+      if (!name || name.includes('@') || name.startsWith('{') || name.includes('"low"') || /^\d+$/.test(name.replace(/@[\s\S]+$/, ''))) {
+        var phone = (c.remote_jid || rawName || '').split('@')[0].replace('@lid', '').replace('@newsletter', '').replace('@s.whatsapp.net', '')
+        var cleanPhone = phone.replace(/^55(\d{2})/, '$1').replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
+        name = cleanPhone !== phone ? cleanPhone : phone
+      }
+      var lastMsgObj = typeof c.last_message === 'string' ? JSON.parse(c.last_message) : c.last_message
+      var lastMsg = lastMsgObj?.text || lastMsgObj || '';
       const unread = c.unread_count || 0;
       const isActive = c.id === S.activeChatId;
       return `<button class="wc-chat-item ${isActive ? 'active' : ''}" onclick="VeltrisWPP.selectChat('${c.id}')">
@@ -284,7 +534,11 @@ window.VeltrisWPP = (() => {
     await loadMessages(chatId);
     // Mark as read
     if (S.chats.find(c => c.id === chatId && c.unread_count > 0)) {
-      await apiPatch('whatsapp_chats', chatId, { unread_count: 0 });
+      if (S._serverSessionId) {
+        try { await fetch(_wppServerUrl + '/mark-read', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({chatId}) }) } catch(e) {}
+      } else {
+        await apiPatch('whatsapp_chats', chatId, { unread_count: 0 });
+      }
       const chat = S.chats.find(c => c.id === chatId);
       if (chat) chat.unread_count = 0;
       renderChatList();
@@ -293,15 +547,36 @@ window.VeltrisWPP = (() => {
 
   async function loadMessages(chatId) {
     if (!chatId) return;
-    S.messages = await apiGet('whatsapp_messages', { chat_id: 'eq.' + chatId, order: 'created_at.asc' });
-    renderMessages();
+    var chat = S.chats.find(function(c) { return c.id === chatId })
+    if (chat && chat.last_messages && chat.last_messages.length > 0 && S.messages.length === 0) {
+      S.messages = chat.last_messages
+      renderMessages()
+    }
+    if (S._serverSessionId) {
+      try {
+        var resp = await fetch(_wppServerUrl + '/messages?chatId=' + encodeURIComponent(chatId))
+        if (resp.ok) {
+          var data = await resp.json()
+          var newMsgs = data.messages || []
+          // Only rebuild if count changed
+          if (newMsgs.length !== S.messages.length) {
+            S.messages = newMsgs
+            renderMessages()
+          }
+        }
+      } catch (e) {}
+    } else {
+      S.messages = await apiGet('whatsapp_messages', { chat_id: 'eq.' + chatId, order: 'created_at.asc' });
+      renderMessages()
+    }
   }
 
   function renderMessages() {
     const container = el('wcMessages');
     const header = el('wcWindowHeader');
     const inputArea = el('wcInputArea');
-    if (!container) return;
+    if (!container) { console.warn('renderMessages: container not found'); return; }
+    if (S.messages.length) console.log('renderMessages: rendering', S.messages.length, 'msgs');
     if (!S.activeChatId) {
       container.style.display = 'flex';
       container.innerHTML = '<div style="margin:auto;text-align:center;color:var(--text-muted);font-size:0.85rem">Selecione uma conversa</div>';
@@ -319,7 +594,12 @@ window.VeltrisWPP = (() => {
         <div class="wc-info">
           <div class="name">${escHtml(name)}</div>
           <div class="status">${contact?.stage ? stageLabel(contact.stage) : 'lead'}</div>
-        </div>`;
+        </div>
+        <button class="wc-ai-btn" onclick="window.VeltrisWPP.analyzeConversation()" title="Analisar conversa com IA"
+          style="margin-left:auto;background:var(--accent);border:none;border-radius:8px;padding:6px 10px;color:#fff;font-size:0.7rem;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0;font-family:inherit">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4c0 2-2 3-4 5-2-2-4-3-4-5a4 4 0 0 1 4-4z"/><path d="M12 11v8"/><path d="M8 22h8"/><path d="M10 22v-3"/><path d="M14 22v-3"/><circle cx="12" cy="6" r="1"/></svg>
+          Analisar
+        </button>`;
     }
     if (S.messages.length === 0) {
       container.style.display = 'flex';
@@ -329,12 +609,35 @@ window.VeltrisWPP = (() => {
     container.style.display = '';
     container.innerHTML = S.messages.map(m => {
       const isSent = m.direction === 'sent' || m.direction === 'outgoing';
-      return `<div class="wc-msg ${isSent ? 'sent' : 'received'}">
-        ${escHtml(m.text || m.content || '')}
-        <div class="time">${formatTime(m.created_at)}</div>
+      const isPending = m.id && m.id.startsWith('temp_');
+      var msgHtml = ''
+      if (m.message_type === 'image' && m.media_url) {
+        msgHtml += '<div style="margin-bottom:4px"><img src="' + _wppServerUrl + m.media_url + '" style="max-width:240px;max-height:240px;border-radius:8px;display:block" loading="lazy" onclick="window.open(this.src)" /></div>'
+      }
+      if (m.message_type === 'audio' && m.media_url) {
+        var aid = 'ap_' + (m.id || Math.random().toString(36).slice(2,8))
+        msgHtml = '<div class="wc-audio-player" onclick="var a=document.getElementById(\'' + aid + '\');if(a.paused){a.play()}else{a.pause()}">' +
+          '<button class="wc-audio-play" id="' + aid + '_btn">▶</button>' +
+          '<div class="wc-audio-bar-wrap">' +
+            '<div class="wc-audio-bar"><div class="wc-audio-bar-fill" id="' + aid + '_fill"></div></div>' +
+            '<div class="wc-audio-time" id="' + aid + '_time">0:00</div>' +
+          '</div>' +
+          '<audio id="' + aid + '" preload="none" src="' + _wppServerUrl + m.media_url + '" style="display:none" ' +
+            'onplay="document.getElementById(\'' + aid + '_btn\').textContent=\'⏸\'" ' +
+            'onpause="document.getElementById(\'' + aid + '_btn\').textContent=\'▶\'" ' +
+            'ontimeupdate="var p=this.currentTime/this.duration*100||0;document.getElementById(\'' + aid + '_fill\').style.width=p+\'%\';var m=Math.floor(this.currentTime/60);var s=Math.floor(this.currentTime%60);document.getElementById(\'' + aid + '_time\').textContent=m+\':\'+(s<10?\'0\':\'\')+s" ' +
+            'onended="document.getElementById(\'' + aid + '_btn\').textContent=\'▶\';document.getElementById(\'' + aid + '_fill\').style.width=\'0%\'">' +
+        '</div>'
+      }
+      if (m.message_type !== 'audio' && m.message_type !== 'image') msgHtml += escHtml(m.text || m.content || '')
+      return `<div class="wc-msg ${isSent ? 'sent' : 'received'}${isPending ? ' wc-msg-pending' : ''}">
+        ${msgHtml}
+        <div class="time">${formatTime(m.created_at)}${isPending ? ' · enviando...' : ''}</div>
       </div>`;
     }).join('');
     container.scrollTop = container.scrollHeight;
+    // Log first and last message text for debugging
+    if (S.messages.length > 0) console.log('Primeira msg:', S.messages[0]?.text?.substring(0,30), '| Ultima msg:', S.messages[S.messages.length-1]?.text?.substring(0,30));
   }
 
   async function sendMessage() {
@@ -343,19 +646,115 @@ window.VeltrisWPP = (() => {
     const text = input.value.trim();
     input.value = '';
     // Optimistic
-    const tempMsg = { id: 'temp_' + Date.now(), text, direction: 'sent', created_at: new Date().toISOString(), chat_id: S.activeChatId };
+    var tempId = 'temp_' + Date.now()
+    var tempMsg = { id: tempId, text, direction: 'sent', created_at: new Date().toISOString(), chat_id: S.activeChatId };
     S.messages.push(tempMsg);
     renderMessages();
-    // Send via API
-    await apiPost('whatsapp_messages', {
-      chat_id: S.activeChatId,
-      session_id: S.activeSessionId,
-      text,
-      direction: 'sent',
-      status: 'queued',
-    });
-    // Refresh messages after short delay
-    setTimeout(() => loadMessages(S.activeChatId), 1000);
+    // Send via server
+    var sentOk = false
+    if (S._serverSessionId) {
+      try {
+        var r = await fetch(_wppServerUrl + '/send-message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: S.activeChatId, text: text, sessionId: S._serverSessionId })
+        })
+        sentOk = r.ok
+      } catch (e) {}
+    }
+    // After send, mark temp message as sent (remove "enviando...")
+    for (var i = 0; i < S.messages.length; i++) {
+      if (S.messages[i].id === tempId) {
+        S.messages[i].id = 'sent_' + Date.now()
+        renderMessages()
+        break
+      }
+    }
+    // Refresh from server in background (don't replace messages)
+    if (sentOk) {
+      setTimeout(function() {
+        loadMessages(S.activeChatId)
+      }, 2000)
+    }
+  }
+
+  async function analyzeConversation() {
+    if (!S.activeChatId || !S.messages.length) {
+      if (typeof showToast === 'function') showToast('Nenhuma mensagem para analisar.');
+      return;
+    }
+    const chat = S.chats.find(c => c.id === S.activeChatId);
+    const contact = chat ? (S.contacts[chat.contact_id] || {}) : {};
+    const name = contact?.name || chat?.contact_name || chat?.remote_jid || 'Desconhecido';
+    if (typeof showToast === 'function') showToast('IA está analisando a conversa...');
+
+    const transcript = S.messages.map(m => {
+      const sender = m.direction === 'sent' || m.direction === 'outgoing' ? 'Você' : name;
+      return sender + ': ' + (m.text || m.content || '');
+    }).join('\n');
+
+    var companyContext = '';
+    var companyMode = typeof window._companyMode !== 'undefined' ? window._companyMode : null;
+    if (companyMode && (companyMode.descriptionSector || companyMode.description)) {
+      companyContext = 'A empresa atua no ramo: ' + (companyMode.descriptionSector || 'não informado') + '. Descrição: ' + (companyMode.description || 'não informada') + '.';
+    }
+
+    const systemPrompt = 'Você é um analista de vendas e relacionamento com clientes sênior. ' + companyContext + ' ' +
+      'Analise a conversa de WhatsApp abaixo e forneça uma análise detalhada e estratégica em português brasileiro. ' +
+      'Sua análise deve conter EXATAMENTE estas seções, separadas por linhas em branco:\n\n' +
+      '1. CONTEXTO DA CONVERSA: Resumo do que foi discutido, tom da conversa, e estágio do relacionamento.\n' +
+      '2. PONTOS FORTES: O que está sendo bem conduzido na abordagem.\n' +
+      '3. PONTOS DE MELHORIA: O que poderia ser melhorado na comunicação ou estratégia.\n' +
+      '4. PRÓXIMOS PASSOS SUGERIDOS: Ações concretas e objetivas para avançar o relacionamento ou fechar negócio.\n' +
+      '5. ANÁLISE DE INTENÇÃO: Qual parece ser o nível de interesse do lead (Frio/Morno/Quente) e por quê.\n\n' +
+      'Seja direto, profissional e baseie sua análise APENAS no conteúdo da conversa. ' +
+      'Não use markdown, asteriscos ou formatação especial. Apenas texto puro com seções claras.';
+
+    try {
+      var result = null;
+      if (typeof callOpenRouter === 'function') {
+        result = await callOpenRouter([
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: 'Aqui está a transcrição da conversa:\n\n' + transcript }
+        ], { maxTokens: 2000, temperature: 0.4 });
+      } else {
+        if (typeof showToast === 'function') showToast('Função de IA não disponível.');
+        return;
+      }
+
+      if (!result) {
+        if (typeof showToast === 'function') showToast('IA não retornou análise. Tente novamente.');
+        return;
+      }
+
+      result = result.replace(/```[\s\S]*?```/g, '').trim();
+      if (!result) {
+        if (typeof showToast === 'function') showToast('Análise vazia. Tente novamente.');
+        return;
+      }
+
+      var overlay = document.getElementById('wppAnalysisOverlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'wppAnalysisOverlay';
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = '<div class="modal" style="max-width:600px;padding:24px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+          '<h3 style="margin:0;font-size:1rem"><i class="fi fi-rr-robot"></i> Análise da conversa</h3>' +
+          '<button onclick="this.closest(\'.modal-overlay\').style.display=\'none\'" style="background:none;border:none;color:var(--text-muted);font-size:1.2rem;cursor:pointer;padding:4px">&times;</button>' +
+          '</div>' +
+          '<div id="wppAnalysisContent" style="font-size:0.85rem;line-height:1.6;color:var(--text);white-space:pre-wrap;max-height:60vh;overflow-y:auto;padding-right:8px"></div>' +
+          '</div>';
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.style.display = 'none'; });
+      }
+
+      document.getElementById('wppAnalysisContent').textContent = result;
+      overlay.style.display = 'flex';
+      if (typeof showToast === 'function') showToast('Análise concluída!');
+    } catch (e) {
+      if (typeof showToast === 'function') showToast('Erro ao analisar conversa.');
+    }
   }
 
   /* ============================ CONTACT PANEL ============================ */
@@ -509,57 +908,41 @@ window.VeltrisWPP = (() => {
   }
 
   /* ============================ WHATSAPP TAB ============================ */
-  async function renderWhatsapp() {
-    const dash = el('wppDashboard');
-    if (dash) {
-      const items = await apiGet('cadence_actions', { order: 'scheduled_at.desc' });
-      const list = Array.isArray(items) ? items : [];
-      const total = list.length;
-      const agendados = list.filter(a => a.status === 'pending').length;
-      const realizados = list.filter(a => a.status === 'sent' || a.status === 'done').length;
-      const cancelados = list.filter(a => a.status === 'cancelled').length;
-      const pctAgendados = total > 0 ? Math.round((agendados / total) * 100) : 0;
-      const pctRealizados = agendados > 0 ? Math.round((realizados / agendados) * 100) : 0;
-      const pctCancelados = agendados > 0 ? Math.round((cancelados / agendados) * 100) : 0;
-      dash.innerHTML = `
-        <div class="wc-metrics-grid">
-          <div class="wc-metric-card">
-            <div class="wc-metric-icon sky"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
-            <div class="label">Total Contatos</div>
-            <div class="value">${total}</div>
-          </div>
-          <div class="wc-metric-card">
-            <div class="wc-metric-icon orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
-            <div class="label">Agendados</div>
-            <div class="value">${agendados}</div>
-          </div>
-          <div class="wc-metric-card">
-            <div class="wc-metric-icon green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-            <div class="label">Realizados</div>
-            <div class="value">${realizados}</div>
-          </div>
-          <div class="wc-metric-card">
-            <div class="wc-metric-icon rose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
-            <div class="label">Cancelados</div>
-            <div class="value">${cancelados}</div>
-          </div>
-        </div>
-        <div class="wc-funnel-card">
-          <h3>Funil de Conversao</h3>
-          <div class="wc-funnel-stage">
-            <div class="stage-header"><span class="name">Recebidos</span><span class="count">${total} ${total > 0 ? '100' : '0'}%</span></div>
-          </div>
-          <div class="wc-funnel-stage">
-            <div class="stage-header"><span class="name">Agendados</span><span class="count">${agendados} ${pctAgendados}%</span></div>
-          </div>
-          <div class="wc-funnel-stage">
-            <div class="stage-header"><span class="name">Realizados</span><span class="count">${realizados} ${pctRealizados}%</span></div>
-          </div>
-          <div class="wc-funnel-stage">
-            <div class="stage-header"><span class="name">Cancelados</span><span class="count">${cancelados} ${pctCancelados}%</span></div>
-          </div>
-        </div>`;
+  function updateSyncStatus(msg) {
+    var el = document.getElementById('wppSyncStatus')
+    if (!el) {
+      el = document.createElement('div')
+      el.id = 'wppSyncStatus'
+      el.style.cssText = 'text-align:center;padding:6px 12px;font-size:0.65rem;color:var(--text-muted)'
+      var dash = document.getElementById('wppDashboard')
+      if (dash) dash.after(el)
+      else {
+        var cs = document.getElementById('wppConnectionStatus')
+        if (cs) cs.after(el)
+      }
     }
+    el.textContent = msg || ''
+    el.style.display = msg ? 'block' : 'none'
+  }
+  // Start periodic sync status update
+  function startSyncMonitor() {
+    if (window._syncMonInt) clearInterval(window._syncMonInt)
+    var syncCount = 0
+    window._syncMonInt = setInterval(async function() {
+      syncCount++
+      if (syncCount % 6 !== 0) return // only run every 6th iteration (~every 30s)
+      if (!S._serverSessionId) return
+      try {
+        var r = await fetch(_wppServerUrl + '/debug')
+        if (r.ok) {
+          var d = await r.json()
+          if (d.chats !== undefined) updateSyncStatus(d.chats + ' conversas · ' + d.messages + ' mensagens')
+        }
+      } catch(e) {}
+    }, 5000)
+  }
+
+  async function renderWhatsapp() {
     renderConnectionStatus();
     if (!S.connected) {
       const conv = el('wppConversas');
@@ -569,16 +952,506 @@ window.VeltrisWPP = (() => {
     renderConversasChatView();
   }
 
+  /* ============================ MÉTRICAS TAB ============================ */
+  async function renderMetricas() {
+    const container = el('wppMetricas');
+    if (!container) return;
+    const contacts = await apiGet('contacts', {});
+    const list = Array.isArray(contacts) ? contacts : [];
+    const total = list.length;
+    const agendados = list.filter(c => c.stage === 'agendado').length;
+    const realizados = list.filter(c => c.stage === 'realizado').length;
+    const cancelados = list.filter(c => c.stage === 'cancelado').length;
+    const pctAgendados = total > 0 ? Math.round((agendados / total) * 100) : 0;
+    const pctRealizados = agendados > 0 ? Math.round((realizados / agendados) * 100) : 0;
+    const pctCancelados = agendados > 0 ? Math.round((cancelados / agendados) * 100) : 0;
+    container.innerHTML = `
+      <div class="wc-metrics-grid">
+        <div class="wc-metric-card">
+          <div class="wc-metric-icon sky"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+          <div class="label">Total Contatos</div>
+          <div class="value">${total}</div>
+        </div>
+        <div class="wc-metric-card">
+          <div class="wc-metric-icon orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+          <div class="label">Agendados</div>
+          <div class="value">${agendados}</div>
+        </div>
+        <div class="wc-metric-card">
+          <div class="wc-metric-icon green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+          <div class="label">Realizados</div>
+          <div class="value">${realizados}</div>
+        </div>
+        <div class="wc-metric-card">
+          <div class="wc-metric-icon rose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
+          <div class="label">Cancelados</div>
+          <div class="value">${cancelados}</div>
+        </div>
+      </div>
+      <div class="wc-funnel-card">
+        <h3>Funil de Conversao</h3>
+        <div class="wc-funnel-stage">
+          <div class="stage-header"><span class="name">Total Contatos</span><span class="count">${total} 100%</span></div>
+          <div class="wc-funnel-bar"><div class="wc-funnel-fill" style="width:100%;background:var(--accent)"></div></div>
+        </div>
+        <div class="wc-funnel-stage">
+          <div class="stage-header"><span class="name">Agendados</span><span class="count">${agendados} ${pctAgendados}%</span></div>
+          <div class="wc-funnel-bar"><div class="wc-funnel-fill" style="width:${pctAgendados}%;background:#3b82f6"></div></div>
+        </div>
+        <div class="wc-funnel-stage">
+          <div class="stage-header"><span class="name">Realizados</span><span class="count">${realizados} ${pctRealizados}%</span></div>
+          <div class="wc-funnel-bar"><div class="wc-funnel-fill" style="width:${pctRealizados}%;background:#22c55e"></div></div>
+        </div>
+        <div class="wc-funnel-stage">
+          <div class="stage-header"><span class="name">Cancelados</span><span class="count">${cancelados} ${pctCancelados}%</span></div>
+          <div class="wc-funnel-bar"><div class="wc-funnel-fill" style="width:${pctCancelados}%;background:#ef4444"></div></div>
+        </div>
+      </div>`;
+  }
+
+  /* ============================ DISPAROS TAB ============================ */
+  var _disparoContacts = [];
+
+  async function renderDisparos() {
+    const container = el('wppDisparos');
+    if (!container) return;
+    var contacts;
+    if (S._serverSessionId) {
+      try {
+        var resp = await fetch(_wppServerUrl + '/db-contacts?sessionId=' + encodeURIComponent(S._serverSessionId));
+        if (resp.ok) { var data = await resp.json(); contacts = data.contacts || []; }
+      } catch (e) {}
+    }
+    if (!contacts) contacts = await apiGet('contacts', {});
+    _disparoContacts = Array.isArray(contacts) ? contacts.filter(c => c.phone) : [];
+    var allContacts = Array.isArray(contacts) ? contacts : [];
+    var tags = [...new Set(allContacts.flatMap(c => c.tags || []))].sort();
+    container.innerHTML = `
+      <div class="wc-disparo-card">
+        <div class="wc-disparo-section">
+          <h4>Selecionar Contatos</h4>
+          <div class="wc-disparo-mode">
+            <label class="wc-radio-label"><input type="radio" name="dispMode" value="tag" checked onchange="VeltrisWPP.onDisparoModeChange()"> Por Tag</label>
+            <label class="wc-radio-label"><input type="radio" name="dispMode" value="individual" onchange="VeltrisWPP.onDisparoModeChange()"> Individual</label>
+          </div>
+          <div id="dispTagSection">
+            <div class="cs-wrap" style="position:relative;min-width:200px">
+              <div class="cs-trigger" id="dispTagTrigger" onclick="VeltrisWPP.toggleDispTagDrop(event)">
+                <span id="dispTagSelected">Todas as tags</span>
+                <span class="cs-arrow">▾</span>
+              </div>
+              <div class="cs-drop" id="dispTagDrop">
+                <div class="cs-opt" data-value="" onclick="VeltrisWPP.selectDispTag('')">Todas as tags</div>
+                ${tags.map(t => `<div class="cs-opt" data-value="${t}" onclick="VeltrisWPP.selectDispTag('${t}')">${escHtml(t)}</div>`).join('')}
+              </div>
+            </div>
+          </div>
+          <div id="dispIndividualSection" style="display:none">
+            <input id="dispSearch" class="wc-disparo-input" placeholder="Buscar contato..." oninput="VeltrisWPP.onDisparoSearch()" />
+            <div class="wc-disparo-list" id="dispContactList"></div>
+          </div>
+        </div>
+        <div class="wc-disparo-section">
+          <h4>Mensagem <span class="wc-disparo-hint">Use {nome} para personalizar</span></h4>
+          <textarea id="dispMessage" class="wc-disparo-textarea" placeholder="Digite a mensagem para disparo..."></textarea>
+        </div>
+        <div class="wc-disparo-footer">
+          <span id="dispCount" class="wc-disparo-count">0 contatos selecionados</span>
+          <button class="btn btn-save" onclick="VeltrisWPP.enviarDisparo()" id="dispSendBtn">Enviar Disparo</button>
+        </div>
+        <div id="dispProgress" class="wc-disparo-progress" style="display:none">
+          <div class="wc-disparo-bar"><div class="wc-disparo-fill" id="dispProgressFill"></div></div>
+          <span id="dispProgressText" class="wc-disparo-pct">0%</span>
+        </div>
+        <div id="dispResult" class="wc-disparo-result" style="display:none"></div>
+      </div>`;
+    onDisparoFilterChange();
+  }
+
+  var _disparoTagValue = '';
+
+  function getDisparoContacts() {
+    var mode = document.querySelector('[name="dispMode"]:checked');
+    if (!mode) return [];
+    if (mode.value === 'tag') {
+      if (!_disparoTagValue) return _disparoContacts;
+      return _disparoContacts.filter(c => (c.tags || []).includes(_disparoTagValue));
+    } else {
+      var checks = qsa('.disp-contact-cb:checked');
+      return Array.from(checks).map(cb => _disparoContacts.find(c => String(c.id) === cb.value)).filter(Boolean);
+    }
+  }
+
+  function updateDisparoCount() {
+    var count = el('dispCount');
+    var filtered = getDisparoContacts();
+    if (count) count.textContent = filtered.length + ' contato(s) selecionado(s)';
+    return filtered;
+  }
+
+  function toggleDispTagDrop(e) {
+    if (e) e.stopPropagation();
+    var drop = el('dispTagDrop');
+    if (!drop) return;
+    closeTagDrop('dispTagDrop');
+    drop.classList.toggle('visible');
+    if (drop.classList.contains('visible')) {
+      setTimeout(function() { document.addEventListener('click', closeDispTagDrop); }, 10);
+    }
+  }
+  function closeDispTagDrop() {
+    closeTagDrop('dispTagDrop');
+    document.removeEventListener('click', closeDispTagDrop);
+  }
+  function selectDispTag(value) {
+    _disparoTagValue = value;
+    var label = value || 'Todas as tags';
+    el('dispTagSelected').textContent = label;
+    closeDispTagDrop();
+    updateDisparoCount();
+  }
+
+  function onDisparoModeChange() {
+    var mode = document.querySelector('[name="dispMode"]:checked');
+    if (!mode) return;
+    var tagSec = el('dispTagSection');
+    var indSec = el('dispIndividualSection');
+    if (mode.value === 'tag') {
+      if (tagSec) tagSec.style.display = '';
+      if (indSec) indSec.style.display = 'none';
+    } else {
+      if (tagSec) tagSec.style.display = 'none';
+      if (indSec) indSec.style.display = '';
+      renderDisparoContactList();
+    }
+    updateDisparoCount();
+  }
+
+  function onDisparoFilterChange() {
+    updateDisparoCount();
+  }
+
+  function onDisparoSearch() {
+    renderDisparoContactList();
+  }
+
+  function renderDisparoContactList() {
+    var list = el('dispContactList');
+    if (!list) return;
+    var q = (el('dispSearch')?.value || '').toLowerCase();
+    var filtered = _disparoContacts.filter(c => {
+      if (!q) return true;
+      return (c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q);
+    });
+    list.innerHTML = filtered.map(c => `
+      <label class="wc-disparo-item">
+        <input type="checkbox" class="disp-contact-cb" value="${c.id}" onchange="VeltrisWPP.updateDisparoCount()" />
+        <span class="wc-disparo-item-name">${escHtml(c.name || '—')}</span>
+        <span class="wc-disparo-item-phone">${escHtml(c.phone || '')}</span>
+      </label>
+    `).join('') || '<div class="wc-disparo-empty">Nenhum contato encontrado</div>';
+  }
+
+  async function enviarDisparo() {
+    var btn = el('dispSendBtn');
+    var progress = el('dispProgress');
+    var fill = el('dispProgressFill');
+    var pctText = el('dispProgressText');
+    var result = el('dispResult');
+    if (!btn || !progress) return;
+    var message = el('dispMessage')?.value?.trim();
+    if (!message) { alert('Digite uma mensagem'); return; }
+    var contacts = getDisparoContacts();
+    if (contacts.length === 0) { alert('Selecione pelo menos um contato'); return; }
+    btn.disabled = true;
+    btn.textContent = 'Enviando...';
+    progress.style.display = 'flex';
+    result.style.display = 'none';
+    var sent = 0, failed = 0;
+    var total = contacts.length;
+    for (var i = 0; i < total; i++) {
+      var c = contacts[i];
+      var personalized = message.replace(/\{nome\}/g, c.name || '');
+      try {
+        if (S._serverSessionId) {
+          var resp = await fetch(_wppServerUrl + '/send-message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chatId: c.phone, text: personalized, sessionId: S._serverSessionId })
+          });
+          if (resp.ok) sent++; else failed++;
+        } else {
+          var payload = {
+            chat_id: S.activeChatId || 'bulk',
+            session_id: S.activeSessionId,
+            text: personalized,
+            direction: 'sent',
+            status: 'queued',
+          };
+          var res = await apiPost('whatsapp_messages', payload);
+          if (res) sent++; else failed++;
+        }
+      } catch (e) { failed++; }
+      var pct = Math.round(((i + 1) / total) * 100);
+      if (fill) fill.style.width = pct + '%';
+      if (pctText) pctText.textContent = pct + '%';
+    }
+    btn.disabled = false;
+    btn.textContent = 'Enviar Disparo';
+    result.style.display = '';
+    result.innerHTML = '<div class="wc-disparo-result-msg ' + (failed === 0 ? 'success' : 'warning') + '">' +
+      '<strong>' + sent + '</strong> enviada(s)' +
+      (failed > 0 ? ', <strong>' + failed + '</strong> falha(s)' : ' com sucesso') +
+      '</div>';
+  }
+
+  /* ============================ TAGS TAB ============================ */
+  var _tagsContactList = [];
+
+  async function renderTags() {
+    const container = el('wppTags');
+    if (!container) return;
+    var contacts;
+    if (S._serverSessionId) {
+      try {
+        var resp = await fetch(_wppServerUrl + '/db-contacts?sessionId=' + encodeURIComponent(S._serverSessionId));
+        if (resp.ok) { var data = await resp.json(); contacts = data.contacts || []; }
+      } catch (e) {}
+    }
+    if (!contacts) contacts = await apiGet('contacts', {});
+    _tagsContactList = Array.isArray(contacts) ? contacts : [];
+    var allTags = [...new Set(_tagsContactList.flatMap(c => c.tags || []))].sort();
+    container.innerHTML = `
+      <div class="wc-tags-card">
+        <div class="wc-tags-section">
+          <h4>Selecionar Contatos</h4>
+          <input id="tagSearch" class="wc-disparo-input" placeholder="Buscar contato..." oninput="VeltrisWPP.onTagSearch()" />
+          <div class="wc-disparo-list" id="tagContactList"></div>
+        </div>
+        <div class="wc-tags-section">
+          <h4>Ação</h4>
+          <div class="cs-wrap" style="position:relative;min-width:160px">
+            <div class="cs-trigger" id="tagActionTrigger" onclick="VeltrisWPP.toggleTagActionDrop(event)">
+              <span id="tagActionSelected">Adicionar tag</span>
+              <span class="cs-arrow">▾</span>
+            </div>
+            <div class="cs-drop" id="tagActionDrop">
+              <div class="cs-opt" data-value="add" onclick="VeltrisWPP.selectTagAction('add')">Adicionar tag</div>
+              <div class="cs-opt" data-value="remove" onclick="VeltrisWPP.selectTagAction('remove')">Remover tag</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;align-items:flex-end">
+            <div style="flex:1">
+              <label style="font-size:0.65rem;color:var(--text-muted);display:block;margin-bottom:4px">Tag</label>
+              <div class="cs-wrap" style="position:relative;min-width:160px">
+                <div class="cs-trigger" id="tagValueTrigger" onclick="VeltrisWPP.toggleTagValueDrop(event)">
+                  <span id="tagValueSelected">Selecionar tag</span>
+                  <span class="cs-arrow">▾</span>
+                </div>
+                <div class="cs-drop" id="tagValueDrop">
+                  <div class="cs-opt" data-value="__new" onclick="VeltrisWPP.selectTagValue('__new')">+ Nova tag...</div>
+                  ${allTags.map(t => `<div class="cs-opt" data-value="${t}" onclick="VeltrisWPP.selectTagValue('${t}')">${escHtml(t)}</div>`).join('')}
+                </div>
+              </div>
+            </div>
+            <div id="tagNewInputWrap" style="display:none;flex:1">
+              <label style="font-size:0.65rem;color:var(--text-muted);display:block;margin-bottom:4px">Nova tag</label>
+              <input id="tagNewName" class="wc-disparo-input" placeholder="Digite o nome da nova tag" />
+            </div>
+          </div>
+          <div id="tagExistingList" class="wc-tags-existing" style="margin-top:10px">
+            ${allTags.map(t => `<span class="wc-tag-existing" onclick="VeltrisWPP.selectTagValue('${t}')">${escHtml(t)}</span>`).join('')}
+          </div>
+        </div>
+        <div class="wc-tags-footer">
+          <span id="tagCount" class="wc-disparo-count">0 contatos selecionados</span>
+          <button class="btn btn-save" onclick="VeltrisWPP.applyTagAction()">Aplicar</button>
+        </div>
+        <div id="tagResult" class="wc-disparo-result" style="display:none"></div>
+      </div>`;
+    renderTagContactList();
+  }
+
+  var _tagAction = 'add';
+  var _tagValue = '';
+
+  function getTagSelectedContacts() {
+    var checks = qsa('.tag-contact-cb:checked');
+    return Array.from(checks).map(cb => _tagsContactList.find(c => String(c.id) === cb.value)).filter(Boolean);
+  }
+
+  function updateTagCount() {
+    var count = el('tagCount');
+    var filtered = getTagSelectedContacts();
+    if (count) count.textContent = filtered.length + ' contato(s) selecionado(s)';
+    return filtered;
+  }
+
+  function onTagSearch() {
+    renderTagContactList();
+  }
+
+  function renderTagContactList() {
+    var list = el('tagContactList');
+    if (!list) return;
+    var selected = new Set(Array.from(qsa('.tag-contact-cb:checked')).map(cb => cb.value));
+    var q = (el('tagSearch')?.value || '').toLowerCase();
+    var filtered = _tagsContactList.filter(c => {
+      if (!q) return true;
+      return (c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q);
+    });
+    list.innerHTML = filtered.map(c => `
+      <label class="wc-disparo-item">
+        <input type="checkbox" class="tag-contact-cb" value="${c.id}" ${selected.has(c.id) ? 'checked' : ''} onchange="VeltrisWPP.updateTagCount()" />
+        <span class="wc-disparo-item-name">${escHtml(c.name || '—')}</span>
+        <span class="wc-disparo-item-phone" style="color:var(--text-dim);font-size:0.65rem">${(c.tags || []).map(t => '#' + t).join(' ') || ''}</span>
+      </label>
+    `).join('') || '<div class="wc-disparo-empty">Nenhum contato encontrado</div>';
+  }
+
+  function closeTagDrop(dropId) {
+    var drop = el(dropId);
+    if (drop) drop.classList.remove('visible');
+  }
+
+  function toggleTagActionDrop(e) {
+    if (e) e.stopPropagation();
+    var drop = el('tagActionDrop');
+    if (!drop) return;
+    closeTagDrop('tagFilterDrop');
+    closeTagDrop('tagValueDrop');
+    drop.classList.toggle('visible');
+    if (drop.classList.contains('visible')) {
+      setTimeout(function() { document.addEventListener('click', closeTagActionDrop); }, 10);
+    }
+  }
+  function closeTagActionDrop() {
+    closeTagDrop('tagActionDrop');
+    document.removeEventListener('click', closeTagActionDrop);
+  }
+  function selectTagAction(value) {
+    _tagAction = value;
+    var label = value === 'add' ? 'Adicionar tag' : 'Remover tag';
+    el('tagActionSelected').textContent = label;
+    closeTagActionDrop();
+  }
+
+  function toggleTagValueDrop(e) {
+    if (e) e.stopPropagation();
+    var drop = el('tagValueDrop');
+    if (!drop) return;
+    closeTagDrop('tagFilterDrop');
+    closeTagDrop('tagActionDrop');
+    drop.classList.toggle('visible');
+    if (drop.classList.contains('visible')) {
+      setTimeout(function() { document.addEventListener('click', closeTagValueDrop); }, 10);
+    }
+  }
+  function closeTagValueDrop() {
+    closeTagDrop('tagValueDrop');
+    document.removeEventListener('click', closeTagValueDrop);
+  }
+  function selectTagValue(value) {
+    _tagValue = value;
+    var wrap = el('tagNewInputWrap');
+    if (value === '__new') {
+      el('tagValueSelected').textContent = '+ Nova tag...';
+      if (wrap) wrap.style.display = '';
+    } else {
+      el('tagValueSelected').textContent = value;
+      if (wrap) wrap.style.display = 'none';
+    }
+    closeTagValueDrop();
+  }
+
+  async function applyTagAction() {
+    var result = el('tagResult');
+    if (!result) return;
+    var contacts = getTagSelectedContacts();
+    if (contacts.length === 0) { alert('Selecione pelo menos um contato'); return; }
+    var tag = _tagValue;
+    if (tag === '__new') {
+      tag = (el('tagNewName')?.value || '').trim().toLowerCase();
+      if (!tag) { alert('Digite o nome da nova tag'); return; }
+    }
+    if (!tag) { alert('Selecione ou digite uma tag'); return; }
+    var action = _tagAction;
+    result.style.display = 'none';
+    var updated = 0, failed = 0;
+    for (var i = 0; i < contacts.length; i++) {
+      var c = contacts[i];
+      var tags = c.tags || [];
+      if (action === 'add') {
+        if (!tags.includes(tag)) tags = [...tags, tag];
+        else { updated++; continue; }
+      } else {
+        tags = tags.filter(t => t !== tag);
+      }
+      try {
+        await apiPatch('contacts', c.id, { tags: tags });
+        c.tags = tags;
+        updated++;
+      } catch (e) { failed++; }
+    }
+    result.style.display = '';
+    result.innerHTML = '<div class="wc-disparo-result-msg ' + (failed === 0 ? 'success' : 'warning') + '">' +
+      '<strong>' + updated + '</strong> contato(s) atualizado(s)' +
+      (failed > 0 ? ', <strong>' + failed + '</strong> falha(s)' : ' com sucesso') +
+      '</div>';
+    if (action === 'add') {
+      refreshTagDropdowns();
+    }
+    if (action === 'remove') {
+      var sel = el('tagValueSelected');
+      if (sel) sel.textContent = 'Selecionar tag';
+      _tagValue = '';
+    }
+    updateTagCount();
+  }
+
+  function refreshTagDropdowns() {
+    var allTags = [...new Set(_tagsContactList.flatMap(c => c.tags || []))].sort();
+    var drop = el('tagValueDrop');
+    if (drop) {
+      drop.innerHTML = '<div class="cs-opt" data-value="__new" onclick="VeltrisWPP.selectTagValue(\'__new\')">+ Nova tag...</div>' +
+        allTags.map(t => '<div class="cs-opt" data-value="' + escHtml(t) + '" onclick="VeltrisWPP.selectTagValue(\'' + escHtml(t) + '\')">' + escHtml(t) + '</div>').join('');
+    }
+    var dispDrop = el('dispTagDrop');
+    if (dispDrop) {
+      dispDrop.innerHTML = '<div class="cs-opt" data-value="" onclick="VeltrisWPP.selectDispTag(\'\')">Todas as tags</div>' +
+        allTags.map(t => '<div class="cs-opt" data-value="' + escHtml(t) + '" onclick="VeltrisWPP.selectDispTag(\'' + escHtml(t) + '\')">' + escHtml(t) + '</div>').join('');
+    }
+    var existingList = el('tagExistingList');
+    if (existingList) {
+      existingList.innerHTML = allTags.map(t => '<span class="wc-tag-existing" onclick="VeltrisWPP.selectTagValue(\'' + escHtml(t) + '\')">' + escHtml(t) + '</span>').join('');
+    }
+  }
+
   /* ============================ CLIENTES TABLE ============================ */
   async function renderClientes() {
     const container = el('wppClientes');
     if (!container) return;
-    S.leads = await apiGet('contacts', {});
+    container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.85rem">Carregando contatos...</div>';
+    if (S._serverSessionId) {
+      try {
+        var resp = await fetch(_wppServerUrl + '/db-contacts?sessionId=' + encodeURIComponent(S._serverSessionId))
+        if (resp.ok) {
+          var data = await resp.json()
+          S.leads = data.contacts || []
+          console.log('renderClientes: loaded', S.leads.length, 'contacts')
+        } else {
+          console.warn('renderClientes: fetch failed', resp.status)
+        }
+      } catch (e) { console.warn('renderClientes: error', e) }
+    }
+    if (!S.leads || !S.leads.length) { console.warn('renderClientes: fallback to apiGet'); S.leads = await apiGet('contacts', {}); }
+    const actionsData = await apiGet('cadence_actions', { order: 'scheduled_at.desc' });
+    S.cadence_actions = Array.isArray(actionsData) ? actionsData : [];
     const list = Array.isArray(S.leads) ? S.leads : [];
     container.innerHTML = `
       <div class="wc-lead-toolbar">
         <input id="wcLeadSearch" placeholder="Buscar cliente..." oninput="VeltrisWPP.filterLeads()" />
-        <div class="cs-wrap" style="position:relative;min-width:140px">
+        <div class="cs-wrap" style="position:relative">
           <div class="cs-trigger" id="wcStageTrigger" onclick="VeltrisWPP.toggleStageDropdown(event)">
             <span id="wcStageSelected">Todos os estágios</span>
             <span class="cs-arrow">▾</span>
@@ -588,52 +1461,123 @@ window.VeltrisWPP = (() => {
             ${S.stages.map(s => `<div class="cs-opt" data-value="${s}" onclick="VeltrisWPP.selectStage('${s}')">${stageLabel(s)}</div>`).join('')}
           </div>
         </div>
+        <button class="btn btn-outline" onclick="VeltrisWPP.toggleBulkSelect()" style="font-size:0.7rem" id="wcBulkBtn">✏️  Editar em massa</button>
         <button class="btn btn-save" onclick="VeltrisWPP.showAddLeadForm()" style="font-size:0.7rem">+ Novo Cliente</button>
+      </div>
+      <div id="wcBulkBar" style="display:none;padding:6px 0;gap:6px;align-items:center">
+        <span style="font-size:0.7rem;color:var(--text-dim)" id="wcBulkCount">0 selecionados</span>
+        <button class="btn btn-save" style="font-size:0.65rem;padding:4px 10px" onclick="VeltrisWPP.bulkEdit()">✏️  Editar selecionados</button>
+        <button class="btn btn-outline" style="font-size:0.65rem;padding:4px 10px" onclick="VeltrisWPP.toggleBulkSelect()">Cancelar</button>
       </div>
       <div id="wcAddLeadForm" style="display:none">
         <div class="wc-add-lead">
           <div class="field"><label>Nome</label><input id="wcNewLeadName" placeholder="Nome" /></div>
           <div class="field"><label>Telefone</label><input id="wcNewLeadPhone" placeholder="+5511999999999" /></div>
           <div class="field"><label>Email</label><input id="wcNewLeadEmail" placeholder="email@exemplo.com" /></div>
-          <div class="field"><label>Estágio</label><select id="wcNewLeadStage" class="wc-lead-select">
-            ${S.stages.map(s => `<option value="${s}">${stageLabel(s)}</option>`).join('')}
-          </select></div>
+          <div class="field"><label>Estágio</label>
+            <div class="cs-wrap" style="position:relative">
+              <div class="cs-trigger" id="wcNewLeadStageTrigger" onclick="VeltrisWPP.toggleNewLeadStage(event)">
+                <span id="wcNewLeadStageSelected">${stageLabel(S.stages[0] || 'agendado')}</span>
+                <span class="cs-arrow">▾</span>
+              </div>
+              <div class="cs-drop" id="wcNewLeadStageDrop">
+                ${S.stages.map(s => `<div class="cs-opt" data-value="${s}" onclick="VeltrisWPP.selectNewLeadStage('${s}')">${stageLabel(s)}</div>`).join('')}
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <div class="field" style="flex:1">
+              <label>Data</label>
+              <div class="cs-wrap" style="position:relative">
+                <div class="cs-trigger" id="wcNewLeadDateTrigger" onclick="VeltrisWPP.toggleDatePicker(event)">
+                  <span id="wcNewLeadDateSelected">Selecionar data</span>
+                  <span class="cs-arrow">▾</span>
+                </div>
+                <div class="cs-drop wc-date-drop" id="wcNewLeadDateDrop">
+                  <div class="wc-date-picker-header">
+                    <button class="wc-date-nav" onclick="VeltrisWPP.datePickerMonth(-1)"><i class="fi fi-rr-angle-left"></i></button>
+                    <span id="wcDatePickerTitle" class="wc-date-picker-title"></span>
+                    <button class="wc-date-nav" onclick="VeltrisWPP.datePickerMonth(1)"><i class="fi fi-rr-angle-right"></i></button>
+                  </div>
+                  <div class="wc-date-picker-days" id="wcDatePickerDays"></div>
+                </div>
+              </div>
+            </div>
+            <div class="field" style="flex:0 0 110px">
+              <label>Hora</label>
+              <div class="cs-wrap" style="position:relative">
+                <div class="cs-trigger" id="wcNewLeadTimeTrigger" onclick="VeltrisWPP.toggleNewLeadTimeDropdown(event)">
+                  <span id="wcNewLeadTimeSelected">10:00</span>
+                  <span class="cs-arrow">▾</span>
+                </div>
+                <div class="cs-drop" id="wcNewLeadTimeDrop"></div>
+                <input type="hidden" id="wcNewLeadTime" value="10:00" />
+              </div>
+            </div>
+          </div>
           <button class="btn btn-save" onclick="VeltrisWPP.addLead()" style="font-size:0.7rem">Adicionar</button>
           <button class="btn btn-outline" onclick="VeltrisWPP.hideAddLeadForm()" style="font-size:0.7rem">Cancelar</button>
         </div>
       </div>
       <div style="overflow-x:auto">
-        <table class="task-table" style="width:100%;font-size:0.78rem">
+        <table class="wc-clientes-table">
           <thead>
             <tr>
-              <th>Nome</th>
-              <th>Telefone</th>
-              <th>Estágio</th>
-              <th>Score</th>
-              <th>Último Contato</th>
-              <th>Ações</th>
+              <th style="text-align:center;width:30px"><input type="checkbox" id="wcBulkAll" onchange="VeltrisWPP.toggleBulkAll(this.checked)" style="accent-color:var(--accent)" /></th>
+              <th style="text-align:center">Nome</th>
+              <th style="text-align:center">Telefone</th>
+              <th style="text-align:center">Estágio</th>
+              <th style="text-align:center">Último Contato</th>
+              <th style="text-align:center">Último Agendamento</th>
+              <th style="text-align:center">Etiquetas</th>
+              <th style="text-align:center">WhatsApp</th>
+              <th style="text-align:center">Excluir</th>
             </tr>
           </thead>
           <tbody id="wcLeadsBody">${renderClientesRows(list)}</tbody>
         </table>
       </div>`;
+    // Hide checkboxes initially
+    setTimeout(function() {
+      var cbs2 = document.querySelectorAll('.wc-bulk-cb, #wcBulkAll')
+      for (var i2 = 0; i2 < cbs2.length; i2++) cbs2[i2].style.visibility = 'hidden'
+    }, 50)
+  }
+
+  function getLastAction(contactId) {
+    if (!Array.isArray(S.cadence_actions)) return null;
+    var actions = S.cadence_actions.filter(function (a) { return a.contact_id === contactId; });
+    if (actions.length === 0) return null;
+    actions.sort(function (a, b) { return (b.scheduled_at || '').localeCompare(a.scheduled_at || ''); });
+    return actions[0].scheduled_at || null;
   }
 
   function renderClientesRows(leads) {
-    if (leads.length === 0) return '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:30px">Nenhum cliente encontrado</td></tr>';
-    return leads.map(l => `
-      <tr style="cursor:pointer" onclick="VeltrisWPP.selectLead('${l.id}')">
-        <td><strong>${escHtml(l.name || '—')}</strong></td>
-        <td>${escHtml(l.phone || '—')}</td>
-        <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${stageColor(l.stage)};margin-right:6px"></span>${stageLabel(l.stage)}</td>
-        <td>${l.score || 0}</td>
-        <td>${l.last_contacted_at ? formatFullDate(l.last_contacted_at) : '—'}</td>
-        <td><button class="btn btn-outline" style="font-size:0.6rem;padding:2px 8px" onclick="event.stopPropagation();VeltrisWPP.openWhatsAppChat('${l.phone}')">WhatsApp</button></td>
+    if (leads.length === 0) return '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px">Nenhum cliente encontrado</td></tr>';
+    return leads.map(l => {
+      var lastAction = getLastAction(l.id);
+      var isSelected = S._bulkSelected && S._bulkSelected[l.id]
+      return `
+      <tr style="cursor:pointer;text-align:center" onclick="var bar=document.getElementById('wcBulkBar');if(bar&&bar.style.display!=='none'){var cb=this.querySelector('.wc-bulk-cb');if(cb){cb.checked=!cb.checked;VeltrisWPP.updateBulkCount()}}else{VeltrisWPP.selectLead('${l.id}')}">
+        <td style="text-align:center"><input type="checkbox" class="wc-bulk-cb" data-id="${l.id}" ${isSelected?'checked':''} onchange="VeltrisWPP.updateBulkCount()" style="accent-color:var(--accent)" onclick="event.stopPropagation()" /></td>
+        <td style="text-align:center"><strong>${escHtml(l.name || '—')}</strong></td>
+        <td style="text-align:center">${escHtml(l.phone || '—')}</td>
+        <td style="text-align:center"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${stageColor(l.stage)};margin-right:6px;vertical-align:middle"></span>${stageLabel(l.stage)}</td>
+        <td style="text-align:center">${l.last_contacted_at ? formatFullDate(l.last_contacted_at) : '—'}</td>
+        <td style="text-align:center">${lastAction ? formatFullDate(lastAction) : '—'}<button class="btn btn-outline" style="font-size:0.7rem;padding:2px 6px;margin-left:4px;border-radius:4px;vertical-align:middle" onclick="event.stopPropagation();VeltrisWPP.editLead('${l.id}')" title="Editar cliente"><i class="fi fi-rr-pencil"></i></button></td>
+        <td style="text-align:center">${(l.tags||[]).map(function(t){return '<span class="wc-tag" style="background:hsla(var(--accent-h),var(--accent-s),55%,0.12);color:var(--accent);font-size:0.55rem;padding:1px 5px;margin:1px;display:inline-block;border-radius:4px">'+escHtml(t)+'</span>'}).join('')||'—'}</td>
+        <td style="text-align:center"><button class="btn btn-outline" style="font-size:0.85rem;padding:4px 10px;border-radius:9999px" onclick="event.stopPropagation();VeltrisWPP.openWhatsAppChat('${l.phone}')" title="WhatsApp"><i class="fi fi-rr-comment-alt"></i></button></td>
+        <td style="text-align:center"><button class="btn btn-outline" style="font-size:0.85rem;padding:4px 10px;border-radius:9999px;color:var(--red)" onclick="event.stopPropagation();VeltrisWPP.deleteLead('${l.id}')" title="Excluir"><i class="fi fi-rr-trash"></i></button></td>
       </tr>
-    `).join('');
+    `}).join('');
   }
 
   var _wcStageValue = '';
+  var _wcNewLeadStage = S.stages && S.stages.length > 0 ? S.stages[0] : 'agendado';
+  var _wcNewLeadDate = '';
+  var _wcDatePickerYear = new Date().getFullYear();
+  var _wcDatePickerMonth = new Date().getMonth();
+  var _wcCalendarSelectedDate = '';
 
   function toggleStageDropdown(e) {
     if (e) e.stopPropagation();
@@ -657,6 +1601,175 @@ window.VeltrisWPP = (() => {
     el('wcStageSelected').textContent = label;
     closeStageDropdown();
     filterLeads();
+  }
+
+  function toggleNewLeadStage(e) {
+    if (e) e.stopPropagation();
+    var drop = el('wcNewLeadStageDrop');
+    if (!drop) return;
+    drop.classList.toggle('visible');
+    if (drop.classList.contains('visible')) {
+      setTimeout(function () {
+        document.addEventListener('click', closeNewLeadStage);
+      }, 10);
+    }
+  }
+  function closeNewLeadStage() {
+    var drop = el('wcNewLeadStageDrop');
+    if (drop) drop.classList.remove('visible');
+    document.removeEventListener('click', closeNewLeadStage);
+  }
+  function selectNewLeadStage(value) {
+    _wcNewLeadStage = value;
+    el('wcNewLeadStageSelected').textContent = stageLabel(value);
+    closeNewLeadStage();
+  }
+
+  function toggleDatePicker(e) {
+    if (e) e.stopPropagation();
+    var drop = el('wcNewLeadDateDrop');
+    if (!drop) return;
+    drop.classList.toggle('visible');
+    if (drop.classList.contains('visible')) {
+      var now = new Date();
+      if (!_wcNewLeadDate) {
+        _wcDatePickerYear = now.getFullYear();
+        _wcDatePickerMonth = now.getMonth();
+      }
+      renderDatePickerGrid();
+      setTimeout(function () {
+        document.addEventListener('click', closeDatePicker);
+      }, 10);
+    }
+  }
+  function closeDatePicker() {
+    var drop = el('wcNewLeadDateDrop');
+    if (drop) drop.classList.remove('visible');
+    document.removeEventListener('click', closeDatePicker);
+  }
+  function datePickerMonth(delta) {
+    _wcDatePickerMonth += delta;
+    if (_wcDatePickerMonth > 11) { _wcDatePickerMonth = 0; _wcDatePickerYear++; }
+    if (_wcDatePickerMonth < 0) { _wcDatePickerMonth = 11; _wcDatePickerYear--; }
+    renderDatePickerGrid();
+  }
+  function renderDatePickerGrid() {
+    var title = el('wcDatePickerTitle');
+    var grid = el('wcDatePickerDays');
+    if (!title || !grid) return;
+    var monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    var dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    title.textContent = monthNames[_wcDatePickerMonth] + ' ' + _wcDatePickerYear;
+    var firstDay = new Date(_wcDatePickerYear, _wcDatePickerMonth, 1).getDay();
+    var daysInMonth = new Date(_wcDatePickerYear, _wcDatePickerMonth + 1, 0).getDate();
+    var today = new Date();
+    var html = '<div class="wc-dp-day-names">' + dayNames.map(function (d) { return '<span>' + d + '</span>'; }).join('') + '</div><div class="wc-dp-grid">';
+    for (var i = 0; i < firstDay; i++) {
+      html += '<div class="wc-dp-day empty"></div>';
+    }
+    for (var d = 1; d <= daysInMonth; d++) {
+      var dateStr = _wcDatePickerYear + '-' + String(_wcDatePickerMonth + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      var isToday = _wcDatePickerYear === today.getFullYear() && _wcDatePickerMonth === today.getMonth() && d === today.getDate();
+      var isSelected = dateStr === _wcNewLeadDate;
+      var cls = 'wc-dp-day';
+      if (isToday) cls += ' today';
+      if (isSelected) cls += ' selected';
+      html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="VeltrisWPP.selectDatePickerDate(\'' + dateStr + '\')">' + d + '</div>';
+    }
+    html += '</div>';
+    grid.innerHTML = html;
+  }
+  function selectDatePickerDate(dateStr) {
+    _wcNewLeadDate = dateStr;
+    var parts = dateStr.split('-');
+    var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    var label = d.toLocaleDateString('pt-BR');
+    el('wcNewLeadDateSelected').textContent = label;
+    closeDatePicker();
+  }
+
+  var _wcTimeOptions = [];
+  for (var _hti = 0; _hti <= 23; _hti++) {
+    _wcTimeOptions.push(String(_hti).padStart(2, '0') + ':00');
+    _wcTimeOptions.push(String(_hti).padStart(2, '0') + ':30');
+  }
+  var _wcTimeOpen = null;
+
+  function initTimeDropdown(dropId) {
+    var drop = el(dropId);
+    if (!drop) return;
+    drop.innerHTML = _wcTimeOptions.map(function (t) {
+      return '<div class="cs-opt" data-value="' + t + '" onclick="VeltrisWPP.selectTime(\'' + t + '\',\'' + dropId + '\')">' + t + '</div>';
+    }).join('');
+  }
+
+  function toggleNewLeadTimeDropdown(e) {
+    if (e) e.stopPropagation();
+    closeAllTimeDropdowns();
+    _wcTimeOpen = 'wcNewLeadTime';
+    var drop = el('wcNewLeadTimeDrop');
+    if (!drop) return;
+    initTimeDropdown('wcNewLeadTimeDrop');
+    drop.classList.add('visible');
+    el('wcNewLeadTimeTrigger').classList.add('open');
+    setTimeout(function () { document.addEventListener('click', closeAllTimeDropdowns); }, 10);
+  }
+
+  function toggleEditLeadTimeDropdown(e) {
+    if (e) e.stopPropagation();
+    closeAllTimeDropdowns();
+    _wcTimeOpen = 'wppEditLeadTime';
+    var drop = el('wppEditLeadTimeDrop');
+    if (!drop) return;
+    initTimeDropdown('wppEditLeadTimeDrop');
+    drop.classList.add('visible');
+    el('wppEditLeadTimeTrigger').classList.add('open');
+    setTimeout(function () { document.addEventListener('click', closeAllTimeDropdowns); }, 10);
+  }
+
+  function closeAllTimeDropdowns() {
+    var ids = ['wcNewLeadTime', 'wppEditLeadTime'];
+    ids.forEach(function (id) {
+      var drop = el(id + 'Drop');
+      var trigger = el(id + 'Trigger');
+      if (drop) drop.classList.remove('visible');
+      if (trigger) trigger.classList.remove('open');
+    });
+    _wcTimeOpen = null;
+    document.removeEventListener('click', closeAllTimeDropdowns);
+  }
+
+  function selectTime(value, dropId) {
+    var prefix = dropId.replace('Drop', '');
+    el(prefix + 'Selected').textContent = value;
+    el(prefix).value = value;
+    var drop = el(dropId);
+    if (drop) {
+      drop.querySelectorAll('.cs-opt').forEach(function (o) { o.classList.remove('selected'); });
+      var opt = drop.querySelector('.cs-opt[data-value="' + value + '"]');
+      if (opt) opt.classList.add('selected');
+    }
+    closeAllTimeDropdowns();
+  }
+
+  async function deleteLead(id) {
+    if (!confirm('Tem certeza que deseja excluir este cliente?')) return;
+    const lead = S.leads.find(l => l.id === id);
+    if (!lead) return;
+    try {
+      if (window._supaDelete) {
+        await window._supaDelete('contacts', 'id=eq.' + encodeURIComponent(id));
+        if (Array.isArray(S.cadence_actions)) {
+          var toDelete = S.cadence_actions.filter(function (a) { return a.contact_id === id; });
+          for (var i = 0; i < toDelete.length; i++) {
+            await window._supaDelete('cadence_actions', 'id=eq.' + encodeURIComponent(toDelete[i].id));
+          }
+          S.cadence_actions = S.cadence_actions.filter(function (a) { return a.contact_id !== id; });
+        }
+      }
+      S.leads = S.leads.filter(function (l) { return l.id !== id; });
+      filterLeads();
+    } catch (e) { if (typeof console !== 'undefined' && console.error) console.error('Erro ao excluir cliente'); }
   }
 
   function filterLeads() {
@@ -684,16 +1797,230 @@ window.VeltrisWPP = (() => {
     const name = el('wcNewLeadName')?.value?.trim();
     const phone = el('wcNewLeadPhone')?.value?.trim();
     const email = el('wcNewLeadEmail')?.value?.trim();
-    const stage = el('wcNewLeadStage')?.value || 'agendado';
+    const stage = _wcNewLeadStage;
+    const dateVal = _wcNewLeadDate;
     if (!name) return;
     const res = await apiPost('contacts', { name, phone, email, stage, source: 'manual', score: 0 });
     if (res) {
       S.leads.push(res);
+      if (dateVal) {
+        var hours = el('wcNewLeadTime')?.value || '10:00';
+        var scheduled_at = dateVal + 'T' + hours + ':00';
+        const action = await apiPost('cadence_actions', {
+          contact_id: res.id,
+          contact_name: name,
+          scheduled_at: scheduled_at,
+          status: 'pending',
+          description: 'Novo cliente: ' + name,
+        });
+        if (action) {
+          if (!Array.isArray(S.cadence_actions)) S.cadence_actions = [];
+          S.cadence_actions.push(action);
+        }
+      }
       hideAddLeadForm();
       el('wcNewLeadName').value = '';
       el('wcNewLeadPhone').value = '';
       el('wcNewLeadEmail').value = '';
+      _wcNewLeadDate = '';
+      el('wcNewLeadDateSelected').textContent = 'Selecionar data';
       filterLeads();
+    }
+  }
+
+  /* ============================ BULK SELECT ============================ */
+  function toggleBulkSelect() {
+    var bar = el('wcBulkBar')
+    if (!bar) return
+    var wasVisible = bar.style.display !== 'none'
+    bar.style.display = wasVisible ? 'none' : 'flex'
+    if (wasVisible) { S._bulkSelected = {}; var allCb = document.getElementById('wcBulkAll'); if (allCb) allCb.checked = false }
+    var show = !wasVisible
+    var cbs = qsa('.wc-bulk-cb, #wcBulkAll')
+    for (var i = 0; i < cbs.length; i++) cbs[i].style.visibility = show ? 'visible' : 'hidden'
+    updateBulkCount()
+    filterLeads()
+  }
+  function toggleBulkAll(checked) {
+    var cbs = qsa('.wc-bulk-cb')
+    for (var i = 0; i < cbs.length; i++) cbs[i].checked = checked
+    updateBulkCount()
+  }
+  function updateBulkCount() {
+    var cbs = qsa('.wc-bulk-cb:checked')
+    var count = cbs.length
+    var el = document.getElementById('wcBulkCount')
+    if (el) el.textContent = count + ' selecionado(s)'
+    if (!S._bulkSelected) S._bulkSelected = {}
+    S._bulkSelected = {}
+    for (var i = 0; i < cbs.length; i++) { var id = cbs[i].dataset.id; if (id) S._bulkSelected[id] = true }
+  }
+  function getBulkSelectedIds() {
+    return Object.keys(S._bulkSelected || {})
+  }
+  async function bulkTag() {
+    var ids = getBulkSelectedIds()
+    if (!ids.length) return
+    var tag = prompt('Digite a etiqueta para aplicar aos ' + ids.length + ' contatos:')
+    if (!tag) return
+    tag = tag.trim().toLowerCase()
+    for (var i = 0; i < ids.length; i++) {
+      var contact = S.leads.find(function(l) { return l.id === ids[i] })
+      if (!contact) continue
+      var tags = contact.tags || []
+      if (!tags.includes(tag)) {
+        tags.push(tag)
+        await apiPatch('contacts', ids[i], { tags: tags })
+        contact.tags = tags
+      }
+    }
+    filterLeads()
+  }
+  function bulkEdit() {
+    var ids = getBulkSelectedIds()
+    if (!ids.length) return
+    var overlay = document.getElementById('wcBulkEditOverlay')
+    if (!overlay) {
+      overlay = document.createElement('div')
+      overlay.id = 'wcBulkEditOverlay'
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px'
+      overlay.innerHTML = '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:400px">' +
+        '<h3 style="margin:0 0 16px;font-size:1rem;color:var(--text)">Editar ' + ids.length + ' contatos</h3>' +
+        '<div class="field"><label>Estágio</label><select id="wcBulkStage" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit">' +
+          '<option value="">Manter atual</option>' +
+          S.stages.map(function(s) { return '<option value="' + s + '">' + stageLabel(s) + '</option>' }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>Tag (adicional)</label><input id="wcBulkTag" placeholder="Nova tag..." style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;box-sizing:border-box" /></div>' +
+        '<div class="field"><label>Data último contato</label><input type="date" id="wcBulkDate" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;box-sizing:border-box" /></div>' +
+        '<div class="field"><label>Agendamento</label><input type="date" id="wcBulkSched" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;box-sizing:border-box" /></div>' +
+        '<div style="display:flex;gap:8px;margin-top:16px">' +
+          '<button class="btn btn-save" onclick="VeltrisWPP.applyBulkEdit()" style="flex:1">Aplicar</button>' +
+          '<button class="btn btn-outline" onclick="this.closest(\'#wcBulkEditOverlay\').remove()" style="flex:1">Cancelar</button>' +
+        '</div></div>'
+      document.body.appendChild(overlay)
+    }
+  }
+  async function applyBulkEdit() {
+    var ids = getBulkSelectedIds()
+    if (!ids.length) return
+    var stage = el('wcBulkStage')?.value || ''
+    var newTag = el('wcBulkTag')?.value?.trim().toLowerCase() || ''
+    var lastContact = el('wcBulkDate')?.value || ''
+    var schedDate = el('wcBulkSched')?.value || ''
+    for (var i = 0; i < ids.length; i++) {
+      var contact = S.leads.find(function(l) { return l.id === ids[i] })
+      if (!contact) continue
+      var updates = {}
+      if (stage) updates.stage = stage
+      if (newTag) {
+        var tags = contact.tags || []
+        if (!tags.includes(newTag)) { tags.push(newTag); updates.tags = tags }
+      }
+      if (lastContact) updates.last_contacted_at = new Date(lastContact).toISOString()
+      if (Object.keys(updates).length) await apiPatch('contacts', ids[i], updates)
+      if (schedDate) {
+        await apiPost('cadence_actions', {
+          contact_id: contact.id, contact_name: contact.name,
+          scheduled_at: schedDate + 'T10:00:00', status: 'pending',
+          description: newTag ? 'Etiqueta: ' + newTag : 'Agendado em massa'
+        })
+      }
+      if (stage) contact.stage = stage
+      if (newTag && !(contact.tags||[]).includes(newTag)) { if (!contact.tags) contact.tags = []; contact.tags.push(newTag) }
+      if (lastContact) contact.last_contacted_at = new Date(lastContact).toISOString()
+    }
+    var overlay = document.getElementById('wcBulkEditOverlay')
+    if (overlay) overlay.remove()
+    filterLeads()
+  }
+  function editLead(contactId) {
+    var lead = S.leads.find(function (l) { return l.id === contactId; });
+    if (!lead) return;
+    var action = Array.isArray(S.cadence_actions) ? S.cadence_actions.find(function (a) { return a.contact_id === contactId; }) : null;
+    var datePart = '', timePart = '10:00';
+    if (action && action.scheduled_at) {
+      var d = new Date(action.scheduled_at);
+      if (!isNaN(d.getTime())) {
+        datePart = d.toISOString().split('T')[0];
+        timePart = d.toTimeString().slice(0, 5);
+      }
+    }
+    var overlay = document.getElementById('wppEditLeadOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'wppEditLeadOverlay';
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = '<div class="modal" style="max-width:440px;padding:24px">' +
+        '<h3 style="margin:0 0 16px;font-size:1rem"><i class="fi fi-rr-user-pen"></i> Editar Cliente</h3>' +
+        '<div class="settings-field"><label>Nome</label><input type="text" id="wppEditLeadName" /></div>' +
+        '<div class="settings-field"><label>Telefone</label><input type="text" id="wppEditLeadPhone" /></div>' +
+        '<div class="settings-field"><label>Email</label><input type="text" id="wppEditLeadEmail" /></div>' +
+        '<div class="settings-field"><label>Estágio</label><select id="wppEditLeadStage">' +
+          S.stages.map(function (s) { return '<option value="' + s + '">' + stageLabel(s) + '</option>'; }).join('') +
+        '</select></div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<div class="settings-field" style="flex:1"><label>Data do agendamento</label><input type="date" id="wppEditLeadDate" /></div>' +
+          '<div class="settings-field" style="flex:0 0 110px"><label>Hora</label><div class="cs-wrap" style="position:relative"><div class="cs-trigger" id="wppEditLeadTimeTrigger" onclick="VeltrisWPP.toggleEditLeadTimeDropdown(event)"><span id="wppEditLeadTimeSelected">10:00</span><span class="cs-arrow">▾</span></div><div class="cs-drop" id="wppEditLeadTimeDrop"></div><input type="hidden" id="wppEditLeadTime" value="10:00" /></div></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:16px">' +
+          '<button class="btn btn-primary" onclick="VeltrisWPP.saveEditedLead()" style="flex:1">Salvar</button>' +
+          '<button class="btn btn-outline" onclick="document.getElementById(\'wppEditLeadOverlay\').style.display=\'none\'" style="flex:1">Cancelar</button>' +
+        '</div></div>';
+      document.body.appendChild(overlay);
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.style.display = 'none'; });
+    }
+    document.getElementById('wppEditLeadName').value = lead.name || '';
+    document.getElementById('wppEditLeadPhone').value = lead.phone || '';
+    document.getElementById('wppEditLeadEmail').value = lead.email || '';
+    document.getElementById('wppEditLeadStage').value = lead.stage || S.stages[0];
+    document.getElementById('wppEditLeadDate').value = datePart;
+    document.getElementById('wppEditLeadTime').value = timePart;
+    document.getElementById('wppEditLeadTimeSelected').textContent = timePart;
+    overlay.dataset.contactId = contactId;
+    overlay.style.display = 'flex';
+  }
+
+  function saveEditedLead() {
+    var overlay = document.getElementById('wppEditLeadOverlay');
+    if (!overlay) return;
+    var contactId = overlay.dataset.contactId;
+    var lead = S.leads.find(function (l) { return l.id === contactId; });
+    if (!lead) return;
+    var name = document.getElementById('wppEditLeadName').value.trim();
+    var phone = document.getElementById('wppEditLeadPhone').value.trim();
+    var email = document.getElementById('wppEditLeadEmail').value.trim();
+    var stage = document.getElementById('wppEditLeadStage').value;
+    var dateVal = document.getElementById('wppEditLeadDate').value;
+    var timeVal = document.getElementById('wppEditLeadTime').value || '10:00';
+    if (!name) { if (typeof showToast === 'function') showToast('Nome é obrigatório'); return; }
+    apiPatch('contacts', contactId, { name: name, phone: phone, email: email, stage: stage }).then(function () {
+      lead.name = name; lead.phone = phone; lead.email = email; lead.stage = stage;
+      if (dateVal) {
+        var scheduled_at = dateVal + 'T' + timeVal + ':00';
+        var action = Array.isArray(S.cadence_actions) ? S.cadence_actions.find(function (a) { return a.contact_id === contactId; }) : null;
+        if (action) {
+          apiPatch('cadence_actions', action.id, { scheduled_at: scheduled_at }).then(function () {
+            action.scheduled_at = scheduled_at;
+            afterEdit();
+          }).catch(function () { afterEdit(); });
+        } else {
+          apiPost('cadence_actions', {
+            contact_id: contactId, contact_name: name, scheduled_at: scheduled_at, status: 'pending', description: 'Cliente: ' + name,
+          }).then(function (res) {
+            if (res) { if (!Array.isArray(S.cadence_actions)) S.cadence_actions = []; S.cadence_actions.push(res); }
+            afterEdit();
+          }).catch(function () { afterEdit(); });
+        }
+      } else {
+        afterEdit();
+      }
+    }).catch(function () {
+      if (typeof showToast === 'function') showToast('Erro ao salvar cliente.');
+    });
+    function afterEdit() {
+      overlay.style.display = 'none';
+      filterLeads();
+      if (typeof showToast === 'function') showToast('Cliente atualizado!');
     }
   }
 
@@ -900,6 +2227,31 @@ window.VeltrisWPP = (() => {
       dt.setMonth(dt.getMonth() + 1);
       renderCalendarGrid(dt.getFullYear(), dt.getMonth(), actions);
     };
+    renderAgendaExtremes(actions);
+  }
+
+  function renderAgendaExtremes(actions) {
+    var container = el('wppAgenda');
+    if (!container) return;
+    var now = new Date();
+    var future = actions.filter(function (a) { return a.scheduled_at && a.scheduled_at.substring(0, 10) >= now.toISOString().substring(0, 10); });
+    future.sort(function (a, b) { return (a.scheduled_at || '').localeCompare(b.scheduled_at || ''); });
+    var existing = document.getElementById('wcAgendaExtremes');
+    if (existing) existing.remove();
+    if (future.length === 0) return;
+    var nearest = future[0];
+    var furthest = future[future.length - 1];
+    var panel = document.createElement('div');
+    panel.id = 'wcAgendaExtremes';
+    panel.className = 'wc-agenda-extremes';
+    var nearestDate = nearest.scheduled_at.substring(0, 10);
+    var furthestDate = furthest.scheduled_at.substring(0, 10);
+    var nearestLabel = new Date(nearestDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+    var furthestLabel = new Date(furthestDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+    panel.innerHTML =
+      '<div class="wc-agenda-extreme-card"><div class="wc-agenda-extreme-header"><i class="fi fi-rr-calendar"></i> Mais Próximo</div><div class="wc-agenda-extreme-name">' + escHtml(nearest.contact_name || 'Contato') + '</div><div class="wc-agenda-extreme-date">' + nearestLabel + '</div></div>' +
+      '<div class="wc-agenda-extreme-card"><div class="wc-agenda-extreme-header"><i class="fi fi-rr-calendar"></i> Mais Distante</div><div class="wc-agenda-extreme-name">' + escHtml(furthest.contact_name || 'Contato') + '</div><div class="wc-agenda-extreme-date">' + furthestLabel + '</div></div>';
+    container.appendChild(panel);
   }
 
   function getCalendarViewDate() {
@@ -937,10 +2289,12 @@ window.VeltrisWPP = (() => {
         return aDate === dateStr;
       });
       var isToday = year === today.getFullYear() && month === today.getMonth() && d === today.getDate();
+      var isSelected = dateStr === _wcCalendarSelectedDate;
       var cls = 'wc-cal-day';
       if (isToday) cls += ' today';
+      if (isSelected) cls += ' selected';
       if (dayActions.length > 0) cls += ' has-events';
-      html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="showCalendarDetail(\'' + dateStr + '\')">';
+      html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="VeltrisWPP.showCalendarDetail(\'' + dateStr + '\')">';
       html += '<span class="wc-cal-day-num">' + d + '</span>';
       if (dayActions.length > 0) {
         html += '<div class="wc-cal-day-events">' + dayActions.slice(0, 3).map(function () { return '<span class="wc-cal-dot"></span>'; }).join('') + '</div>';
@@ -953,6 +2307,14 @@ window.VeltrisWPP = (() => {
   }
 
   function showCalendarDetail(dateStr) {
+    _wcCalendarSelectedDate = dateStr;
+    var grid = document.getElementById('wcCalGrid');
+    if (grid) {
+      var allDays = grid.querySelectorAll('.wc-cal-day');
+      for (var i = 0; i < allDays.length; i++) {
+        allDays[i].classList.toggle('selected', allDays[i].getAttribute('data-date') === dateStr);
+      }
+    }
     var detail = document.getElementById('wcCalDetail');
     if (!detail) return;
     var actions = Array.isArray(S.cadence_actions) ? S.cadence_actions : [];
@@ -993,12 +2355,12 @@ window.VeltrisWPP = (() => {
     let chat = S.chats.find(c => c.contact_id === contactId);
     if (!chat) {
       // Create chat
-      const res = await apiPost('whatsapp_chats', {
+      const res = await apiPost('whatsapp_chats', Object.assign({
         contact_id: contactId,
-        remote_jid: contact?.phone || '',
-        contact_name: contact?.name || '',
+        remote_jid: (contact && contact.phone) || '',
+        contact_name: (contact && contact.name) || '',
         unread_count: 0,
-      });
+      }, S.currentUser ? { user_id: S.currentUser } : {}));
       if (res) {
         S.chats.push(res);
         chat = res;
@@ -1011,6 +2373,8 @@ window.VeltrisWPP = (() => {
     }
   }
 
+  var _wcLabelFilter = ''
+
   function renderConversasChatView() {
     const container = el('wppConversas');
     if (!container) return;
@@ -1018,6 +2382,7 @@ window.VeltrisWPP = (() => {
       <div class="wc-layout">
         <div class="wc-col wc-col-1">
           <div class="wc-search"><input placeholder="Buscar conversa..." oninput="VeltrisWPP.searchChats(this.value)" /></div>
+          <div class="wc-filter-bar" id="wcFilterBar"></div>
           <div class="wc-list" id="wcChatList"></div>
         </div>
         <div class="wc-col wc-col-2">
@@ -1047,7 +2412,7 @@ window.VeltrisWPP = (() => {
     stopPolling();
     S.pollingInterval = setInterval(() => {
       loadChats();
-    }, 5000);
+    }, 15000);
   }
 
   function stopPolling() {
@@ -1056,41 +2421,63 @@ window.VeltrisWPP = (() => {
 
   function startRealtime() {
     stopRealtime();
-    // Simple polling-based realtime for now
+    S.realtimeInterval = setInterval(() => {
+      if (!S.activeChatId) return;
+      loadMessages(S.activeChatId);
+    }, 5000);
   }
 
   function stopRealtime() {
-    // noop
+    if (S.realtimeInterval) { clearInterval(S.realtimeInterval); S.realtimeInterval = null; }
+  }
+
+  function getCurrentUserId() {
+    var api = window.api;
+    if (api && api.getUser && api.getUser()) return api.getUser().id;
+    var sess = api && api.companyGetSession && api.companyGetSession();
+    if (sess && sess.user) return sess.user.id;
+    return null;
   }
 
   /* ============================ INIT ============================ */
   async function init() {
+    S.currentUser = getCurrentUserId();
     initTabs();
     await loadSessions();
     if (S.connected) {
       await loadChats();
     }
-    // Render initial view
+    // Render all views
     renderWhatsapp();
-    // Periodic session refresh
+    renderClientes();
+    renderAgenda();
+    // Periodic session refresh — only needs to run once connected
     setInterval(async () => {
       if (!window.api || !api.isLoggedIn()) return;
-      const sessions = await apiGet('whatsapp_sessions', {});
-      const connected = sessions.find(s => s.status === 'connected');
-      if (connected && !S.connected) {
-        S.connected = true;
-        S.activeSessionId = connected.id;
-        renderConnectionStatus();
-        startPolling();
-        loadChats();
-      } else if (!connected && S.connected) {
-        S.connected = false;
-        S.activeSessionId = null;
-        stopPolling();
-        renderConnectionStatus();
+      if (S.connected && S._serverSessionId) return; // already connected via server, skip
+      if (S._serverSessionId) {
+        try {
+          var hResp = await fetch(_wppServerUrl + '/health?sessionId=' + encodeURIComponent(S._serverSessionId))
+          if (hResp.ok) {
+            var hData = await hResp.json()
+            if (hData.connected && !S.connected) {
+              S.connected = true; S.activeSessionId = S._serverSessionId
+              renderConnectionStatus(); startPolling(); loadChats()
+            }
+            return
+          }
+        } catch (e) {}
       }
-      S.sessions = sessions;
-    }, 15000);
+      var sessions = await apiGet('whatsapp_sessions', S.currentUser ? { user_id: 'eq.' + S.currentUser } : {});
+      if (sessions && sessions.length > 0) {
+        var connected = sessions.find(function (s) { return s.status === 'connected'; });
+        if (connected && !S.connected) {
+          S.connected = true; S.activeSessionId = connected.id
+          renderConnectionStatus(); startPolling(); loadChats()
+        }
+        S.sessions = sessions;
+      }
+  }, 30000);
   }
 
   return {
@@ -1105,14 +2492,55 @@ window.VeltrisWPP = (() => {
     generateAiInsight,
     toggleStageDropdown,
     selectStage,
+    toggleNewLeadStage,
+    selectNewLeadStage,
+    toggleDatePicker,
+    datePickerMonth,
+    selectDatePickerDate,
     filterLeads,
     showAddLeadForm,
     hideAddLeadForm,
     addLead,
+    deleteLead,
     selectLead,
     openWhatsAppChat,
     openContactChat,
     searchChats,
+    syncServerContacts,
+    showCalendarDetail,
+    getServerSessionId: function() { return S._serverSessionId },
+    getActiveChatId: function() { return S.activeChatId },
+    getMessagesCount: function() { return S.messages?.length || 0 },
+    analyzeConversation,
+    updateSyncStatus,
+    startSyncMonitor,
+    loadLabels,
+    setLabelFilter,
+    editLead,
+    saveEditedLead,
+    toggleBulkSelect,
+    toggleBulkAll,
+    updateBulkCount,
+    bulkTag,
+    bulkEdit,
+    applyBulkEdit,
+    toggleNewLeadTimeDropdown,
+    toggleEditLeadTimeDropdown,
+    selectTime,
+    enviarDisparo,
+    onDisparoModeChange,
+    onDisparoFilterChange,
+    onDisparoSearch,
+    updateDisparoCount,
+    toggleDispTagDrop,
+    selectDispTag,
+    onTagSearch,
+    updateTagCount,
+    toggleTagActionDrop,
+    selectTagAction,
+    toggleTagValueDrop,
+    selectTagValue,
+    applyTagAction,
   };
 })();
 

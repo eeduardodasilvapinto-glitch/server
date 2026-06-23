@@ -24,6 +24,22 @@
   var api = {
     _saveLogin: true,
 
+    _companyScopedTables: ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback'],
+
+    _getCompanyId: function () {
+      try {
+        var mode = window._companyMode;
+        if (mode && mode.id) return mode.id;
+        var sess = this.companyGetSession();
+        if (sess && sess.company) return sess.company.id || sess.company.company_id || null;
+      } catch (e) {}
+      return null;
+    },
+
+    _isCompanyScoped: function (table) {
+      return this._companyScopedTables.indexOf(table) >= 0;
+    },
+
     token: _getStore(TOKEN_KEY) || null,
     user: (function () {
       try { return JSON.parse(_getStore(USER_KEY)); } catch { return null; }
@@ -103,6 +119,7 @@
 
     // ── Generic REST helpers (via api-proxy Edge Function) ──
     _proxyCall: async function (operation, table, params, body) {
+      if (window._supabaseBlocked) return { data: [] };
       var h = {
         'Content-Type': 'application/json',
         'apikey': SUPABASE_ANON_KEY,
@@ -139,6 +156,10 @@
           }
         }
       }
+      var cid = this._getCompanyId();
+      if (cid && this._isCompanyScoped(table)) {
+        filters['company_id'] = 'eq.' + cid;
+      }
       var proxyParams = { select: select, filters: filters };
       if (order) proxyParams.order = order;
       if (limit) proxyParams.limit = limit;
@@ -148,6 +169,10 @@
     },
 
     _supaPost: async function (table, body) {
+      var cid = this._getCompanyId();
+      if (cid && this._isCompanyScoped(table)) {
+        body = Object.assign({}, body, { company_id: cid });
+      }
       var result = await this._proxyCall('insert', table, {}, body);
       return result.data || {};
     },
@@ -163,6 +188,10 @@
         if (val.indexOf('.') > 0) val = val.substring(val.indexOf('.') + 1);
         filters[k] = val;
       }
+      var cid = this._getCompanyId();
+      if (cid && this._isCompanyScoped(table)) {
+        filters['company_id'] = 'eq.' + cid;
+      }
       await this._proxyCall('update', table, { filters: filters }, body);
     },
 
@@ -176,6 +205,10 @@
         var val = decodeURIComponent(entries[i].substring(eq + 1));
         if (val.indexOf('.') > 0) val = val.substring(val.indexOf('.') + 1);
         filters[k] = val;
+      }
+      var cid = this._getCompanyId();
+      if (cid && this._isCompanyScoped(table)) {
+        filters['company_id'] = 'eq.' + cid;
       }
       await this._proxyCall('delete', table, { filters: filters });
     },
@@ -245,19 +278,26 @@
         'Content-Type': 'application/json',
         'apikey': SUPABASE_ANON_KEY,
       };
-      var ct = this.token || (this._companyMemory && this._companyMemory.token) || localStorage.getItem(this.COMPANY_TOKEN_KEY) || sessionStorage.getItem(this.COMPANY_TOKEN_KEY);
+      var t = this.token || localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+      if (t) h['Authorization'] = 'Bearer ' + t;
+      var ct = (this._companyMemory && this._companyMemory.token) || localStorage.getItem(this.COMPANY_TOKEN_KEY) || sessionStorage.getItem(this.COMPANY_TOKEN_KEY);
       if (ct) h['x-company-auth'] = ct;
-      var res = await fetch(FUNCTIONS_URL + '/manage-users', {
-        method: 'POST',
-        headers: h,
-        body: JSON.stringify(body),
-      });
-      if (res.status === 401) { throw new Error('Não autorizado'); }
-      if (!res.ok) {
-        var err = await res.json().catch(function () { return { error: 'Erro' }; });
-        throw new Error(err.error || 'Erro ao gerenciar usuário');
+      if (!t && !ct) return { users: [] };
+      try {
+        var res = await fetch(FUNCTIONS_URL + '/manage-users', {
+          method: 'POST',
+          headers: h,
+          body: JSON.stringify(body),
+        });
+        if (res.status === 401) return { users: [] };
+        if (!res.ok) {
+          var err = await res.json().catch(function () { return { error: 'Erro' }; });
+          throw new Error(err.error || 'Erro ao gerenciar usuário');
+        }
+        return await res.json();
+      } catch (e) {
+        return { users: [] };
       }
-      return await res.json();
     },
 
     listUsers: function () {
@@ -755,8 +795,8 @@
       return result.users || [];
     },
 
-    companyCreateUser: async function (companyId, name, password, role) {
-      return await this._companyFetch('create_user', { company_id: companyId, name: name, password: password, role: role || 'user' });
+    companyCreateUser: async function (companyId, name, password, role, sector, permissions) {
+      return await this._companyFetch('create_user', { company_id: companyId, name: name, password: password, role: role || 'user', sector: sector || '', permissions: permissions || {} });
     },
 
     companyUpdateUser: async function (id, data) {
