@@ -382,32 +382,51 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ contacts: list })); return
   }
 
-  // /chats
+  // /chats — based on contacts (clientes) table, dedup by normalized phone
   if (pathname === '/chats') {
     const sid = url.searchParams.get('sessionId')
-    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
-    const { data: chats } = await supabase.from('whatsapp_chats').select('*').not('last_message_at', 'is', null).order('last_message_at', { ascending: false }).limit(500)
-    // Dedup by normalized phone
-    const seenPhone = {}; const deduped = []
-    if (chats) { for (const c of chats) { const p = normalizePhone(c.remote_jid?.split('@')[0] || ''); if (p && !seenPhone[p]) { seenPhone[p] = true; deduped.push(c) } else if (!p) { deduped.push(c) } } }
-    // Update contact_name from contacts table if chat name is a label/phone
-    const { data: dbContacts } = await supabase.from('contacts').select('phone,name')
-    const nameByPhone = {}
-    if (dbContacts) { for (const c of dbContacts) { if (c.name && !c.name.includes('@') && c.name !== c.phone && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x')) { nameByPhone[normalizePhone(c.phone)] = c.name } } }
-    const labelNames = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho','escritorio','comercial','recado','fax','secretaria','eletronica','vendas']
-    for (const chat of deduped) {
-      const phone = normalizePhone(chat.remote_jid?.split('@')[0] || '')
-      const contactName = nameByPhone[phone]
-      if (!contactName) continue
-      const curName = (chat.contact_name || '').toLowerCase().trim()
-      // Replace if current name is: phone number, short label, or all-lowercase generic phrase
-      const isLabel = !chat.contact_name || chat.contact_name === phone || chat.contact_name === chat.remote_jid || curName.length < 3 || labelNames.includes(curName) || (curName === curName.replace(/[A-Z]/g, '') && curName.includes(' '))
-      if (isLabel && contactName !== chat.contact_name) {
-        chat.contact_name = contactName
-        await supabase.from('whatsapp_chats').update({ contact_name: contactName }).eq('id', chat.id)
+    // Get all CRM contacts (clients)
+    const { data: contacts } = await supabase.from('contacts').select('id,name,phone,stage,tags,last_contacted_at,source').not('name', 'is', null)
+    // Get all WhatsApp chats for message count & last message
+    const { data: waChats } = sid ? await supabase.from('whatsapp_chats').select('*').eq('session_id', sid) : { data: [] }
+    // Build phone -> chat map
+    const chatByPhone = {}
+    if (waChats) { for (const ch of waChats) { const p = normalizePhone(ch.remote_jid?.split('@')[0] || ''); if (p && !chatByPhone[p]) chatByPhone[p] = ch } }
+    // Build chat list from contacts, merge with whatsapp chat data
+    const seen = {}; const result = []
+    const now = new Date()
+    if (contacts) {
+      for (const c of contacts) {
+        const np = normalizePhone(c.phone || '')
+        if (!np || np.length >= 14 || seen[np]) continue
+        seen[np] = true
+        const chat = chatByPhone[np]
+        // Check if this contact has recent messages or any activity
+        const lastMsgAt = chat?.last_message_at || c.last_contacted_at || null
+        // Include only contacts with WhatsApp source OR that have a chat
+        if (c.source !== 'whatsapp' && !chat) continue
+        result.push({
+          id: chat?.id || c.id,
+          remote_jid: chat?.remote_jid || '55' + np + '@s.whatsapp.net',
+          contact_id: chat?.contact_id || c.id,
+          contact_name: chat?.contact_name || c.name,
+          last_message: chat?.last_message || null,
+          last_message_at: lastMsgAt,
+          unread_count: chat?.unread_count || 0,
+          contact_phone: c.phone,
+          contact_stage: c.stage || null,
+          contact_tags: c.tags || null,
+          session_id: sid,
+        })
       }
     }
-    res.writeHead(200); res.end(JSON.stringify({ chats: deduped || [] })); return
+    // Sort by last_message_at DESC, then by name
+    result.sort((a, b) => {
+      if (a.last_message_at && b.last_message_at) return a.last_message_at > b.last_message_at ? -1 : 1
+      if (a.last_message_at) return -1; if (b.last_message_at) return 1
+      return (a.contact_name || '').localeCompare(b.contact_name || '')
+    })
+    res.writeHead(200); res.end(JSON.stringify({ chats: result })); return
   }
 
   // /messages

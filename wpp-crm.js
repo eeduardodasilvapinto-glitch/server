@@ -544,7 +544,7 @@ window.VeltrisWPP = (() => {
     container.innerHTML = chatsToRender.map(c => {
       var chatPhone = (c.remote_jid || '').split('@')[0]
       var contact = S.contacts[c.contact_id] || S.contacts[chatPhone] || S.contacts[c.remote_jid]
-      var rawName = contact?.name || c.contact_name || c.remote_jid || '';
+      var rawName = c.contact_name || contact?.name || c.remote_jid || '';
       var name = rawName;
       if (!name || name.includes('@') || name.startsWith('{') || name.includes('"low"') || /^\d+$/.test(name.replace(/@[\s\S]+$/, ''))) {
         var phone = (c.remote_jid || rawName || '').split('@')[0].replace('@lid', '').replace('@newsletter', '').replace('@s.whatsapp.net', '')
@@ -632,7 +632,7 @@ window.VeltrisWPP = (() => {
     if (inputArea) inputArea.style.display = '';
     const chat = S.chats.find(c => c.id === S.activeChatId);
     const contact = chat ? (S.contacts[chat.contact_id] || {}) : {};
-    const name = contact?.name || chat?.contact_name || chat?.remote_jid || 'Desconhecido';
+    const name = chat?.contact_name || contact?.name || chat?.remote_jid || 'Desconhecido';
     var avatarEl = el('wcChatAvatar');
     var nameEl = el('wcChatName');
     var statusEl = el('wcChatStatus');
@@ -732,7 +732,7 @@ window.VeltrisWPP = (() => {
     }
     const chat = S.chats.find(c => c.id === S.activeChatId);
     const contact = chat ? (S.contacts[chat.contact_id] || {}) : {};
-    const name = contact?.name || chat?.contact_name || chat?.remote_jid || 'Desconhecido';
+    const name = chat?.contact_name || contact?.name || chat?.remote_jid || 'Desconhecido';
     if (typeof showToast === 'function') showToast('IA está analisando a conversa...');
 
     const transcript = S.messages.map(m => {
