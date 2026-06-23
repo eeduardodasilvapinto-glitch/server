@@ -6,7 +6,8 @@
   var SUPABASE_ANON_KEY = 'sb_publishable_gsf7GLZd9jqL-r_MuQQcuw_g9CONjKt';
   // ──────────────────────────────────────────────────
 
-  var FUNCTIONS_URL = SUPABASE_URL + '/functions/v1';
+  var PROXY_ACTIVE = window.location.origin && window.location.origin.indexOf('vercel.app') >= 0;
+  var FUNCTIONS_URL = PROXY_ACTIVE ? window.location.origin + '/api' : SUPABASE_URL + '/functions/v1';
   var REST_URL = SUPABASE_URL + '/rest/v1';
 
   var TOKEN_KEY = 'aureoon_token';
@@ -715,7 +716,7 @@
     },
 
     _companyFetch: async function (action, data) {
-      var res = await fetch(SUPABASE_URL + '/functions/v1/manage-companies', {
+      var res = await fetch(FUNCTIONS_URL + '/manage-companies', {
         method: 'POST',
         headers: this._companyHeaders(),
         body: JSON.stringify({ action: action, data: data || {} }),
