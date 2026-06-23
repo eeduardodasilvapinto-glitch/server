@@ -16053,13 +16053,13 @@
                 } else {
                     promise = api.companyCreateUser(_companyMode.id, name, pass, role, sector, perms);
                 }
-                promise.then(function () {
-                    usrCloseForm();
-                    usrRender();
-                    showToast('Usuário salvo!');
-                }).catch(function (e) {
-                    showToast('Erro na operacao.');
-                });
+    promise.then(function () {
+        usrCloseForm();
+        usrRender();
+        showToast('Usuário salvo!');
+    }).catch(function (e) {
+        showToast('Erro: ' + (e.message || 'opera��o falhou'));
+    });
             }
 
             function usrDelete(id) {
