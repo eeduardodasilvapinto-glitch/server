@@ -939,7 +939,7 @@
                 const cat = categories.find(c => c.id === value);
                 if (!cat) return;
                 document.getElementById('newCategory').value = value;
-                document.getElementById('csSelected').textContent = cat.icon + ' ' + cat.name;
+                document.getElementById('csSelected').innerHTML = cat.icon + ' ' + cat.name;
                 document.querySelectorAll('#csDrop .cs-opt').forEach(el => el.classList.remove('selected'));
                 const opt = document.querySelector(`#csDrop .cs-opt[data-value="${value}"]`);
                 if (opt) opt.classList.add('selected');
@@ -998,7 +998,7 @@
                     pri: { '': 'Manter prioridade', 'alta': '<i class="fi fi-rr-arrow-up" style="color:var(--red)"></i> Alta', 'media': '<i class="fi fi-rr-minus" style="color:#facc15"></i> Média', 'baixa': '<i class="fi fi-rr-arrow-down" style="color:#4ade80"></i> Baixa' },
                     prazo: { '': 'Manter prazo', 'curto': '<i class="fi fi-rr-time-fast"></i> Curto', 'medio': '<i class="fi fi-rr-calendar"></i> Médio', 'longo': '<i class="fi fi-rr-hourglass"></i> Longo' }
                 };
-                labelEl.textContent = labels[which][value] || value;
+                labelEl.innerHTML = labels[which][value] || value;
                 closeBC(which);
             }
 
@@ -1092,7 +1092,7 @@
                 }).join('');
                 var cat = categories.find(function (c) { return c.id === item.cat; });
                 document.getElementById('editCategory').value = item.cat;
-                document.getElementById('editCsSelected').textContent = cat ? cat.icon + ' ' + cat.name : item.cat;
+                document.getElementById('editCsSelected').innerHTML = cat ? cat.icon + ' ' + cat.name : item.cat;
 
                 document.getElementById('editModalOverlay').classList.add('visible');
             }
@@ -1144,7 +1144,7 @@
                 var cat = categories.find(function (c) { return c.id === value; });
                 if (!cat) return;
                 document.getElementById('editCategory').value = value;
-                document.getElementById('editCsSelected').textContent = cat.icon + ' ' + cat.name;
+                document.getElementById('editCsSelected').innerHTML = cat.icon + ' ' + cat.name;
                 document.querySelectorAll('#editCsDrop .cs-opt').forEach(function (el) { return el.classList.remove('selected'); });
                 var opt = document.querySelector('#editCsDrop .cs-opt[data-value="' + value + '"]');
                 if (opt) opt.classList.add('selected');
@@ -1287,7 +1287,7 @@
                 document.getElementById('newLabel').value = '';
                 document.getElementById('newLabel').focus();
                 renderModalSelects();
-                document.getElementById('csSelected').textContent = categories[0].icon + ' ' + categories[0].name;
+                document.getElementById('csSelected').innerHTML = categories[0].icon + ' ' + categories[0].name;
             }
 
             function closeModal() {
