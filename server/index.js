@@ -4,8 +4,6 @@
    ================================================================ */
 
 import WebSocket from 'ws'
-globalThis.WebSocket = WebSocket
-
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage } from '@whiskeysockets/baileys'
 import QRCode from 'qrcode'
 import pino from 'pino'
@@ -14,15 +12,17 @@ import path from 'path'
 import http from 'http'
 import 'dotenv/config'
 
+globalThis.WebSocket = WebSocket
+
+const { createClient } = await import('@supabase/supabase-js')
+
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
 const AUTH_BASE = process.env.WPP_AUTH_DIR || './auth'
 const MEDIA_DIR = process.env.WPP_MEDIA_DIR || './media'
-const HTTP_PORT = process.env.PORT || process.env.WPP_HTTP_PORT || 3123
+const HTTP_PORT = parseInt(process.env.PORT, 10) || 3123
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
-
-const { createClient } = await import('@supabase/supabase-js')
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false }, realtime: { transport: WebSocket } })
 
 if (!fs.existsSync(AUTH_BASE)) fs.mkdirSync(AUTH_BASE, { recursive: true })
