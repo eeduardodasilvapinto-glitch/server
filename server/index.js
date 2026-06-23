@@ -282,7 +282,7 @@ async function startSession(sessionId, userId, companyId) {
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     logger.info({ sessionId, type, count: messages.length, firstId: messages[0]?.key?.id, hasMessage: !!messages[0]?.message }, 'Messages upsert')
-    if (type !== 'notify') { logger.info({ sessionId, type }, 'Skipping: not notify'); return }
+    if (type !== 'notify' && type !== 'append') { logger.info({ sessionId, type }, 'Skipping: unknown type'); return }
     for (const msg of messages) {
       try {
         if (!msg.message) { logger.debug({ sessionId, id: msg.key?.id }, 'No message body'); continue }
@@ -290,8 +290,8 @@ async function startSession(sessionId, userId, companyId) {
         if (!jid) { logger.debug({ sessionId, id: msg.key?.id }, 'No remoteJid'); continue }
         if (jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter')) { logger.debug({ sessionId, jid }, 'Skipping group/broadcast'); continue }
         const msgPhone = jid.split('@')[0]
-        if (msgPhone.replace(/\D/g,'').length >= 14) { logger.debug({ sessionId, phone: msgPhone }, 'Skipping LID'); continue }
-        logger.info({ sessionId, jid, fromMe: msg.key.fromMe }, 'Processing incoming message')
+        if (normalizePhone(msgPhone).length >= 14) { logger.debug({ sessionId, phone: msgPhone }, 'Skipping LID'); continue }
+        logger.info({ sessionId, jid, fromMe: msg.key.fromMe, type: msg.message?.constructor?.name }, 'Processing incoming message')
 
         let mediaUrl = null, msgType = 'text'
         if (msg.message?.audioMessage) {
