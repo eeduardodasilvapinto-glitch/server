@@ -78,6 +78,7 @@ async function findChat(jid, sessionId) {
 
 async function startSession(sessionId, userId, companyId) {
   logger.info({ sessionId }, 'startSession')
+  await supabase.from('whatsapp_sessions').update({ status: 'connecting' }).eq('id', sessionId)
   if (sessions.has(sessionId)) {
     const existing = sessions.get(sessionId)
     if (existing.sock) return
@@ -334,10 +335,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/sessions') {
     const active = []
     for (const [id, entry] of sessions) { active.push({ sessionId: id, status: entry.status, phone: entry.phone, hasQr: !!entry.qrCode }) }
-    if (!active.length) {
-      const { data: dbS } = await supabase.from('whatsapp_sessions').select('id,status,phone')
-      if (dbS) for (const s of dbS) active.push({ sessionId: s.id, status: s.status, phone: s.phone })
-    }
+    // Don't fallback to DB sessions that lost their socket — they need reconnect
     res.writeHead(200); res.end(JSON.stringify({ sessions: active })); return
   }
 

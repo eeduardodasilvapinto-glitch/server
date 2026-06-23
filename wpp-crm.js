@@ -145,6 +145,7 @@ window.VeltrisWPP = (() => {
           S.activeSessionId = activeSrv.sessionId
           S.connected = activeSrv.status === 'connected'
           S.sessions = [{ id: activeSrv.sessionId, status: activeSrv.status, phone: activeSrv.phone }]
+          saveWppSession(activeSrv.sessionId)
           renderConnectionStatus()
           if (S.connected) {
             startPolling()
@@ -160,6 +161,7 @@ window.VeltrisWPP = (() => {
     S.sessions = await apiGet('whatsapp_sessions', S.currentUser ? { user_id: 'eq.' + S.currentUser } : {});
     S.activeSessionId = S.sessions.find(s => s.status === 'connected')?.id || null;
     S.connected = !!S.activeSessionId;
+    if (S.activeSessionId) saveWppSession(S.activeSessionId);
     renderConnectionStatus();
     if (S.connected) {
       startPolling();
