@@ -639,6 +639,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const data = JSON.parse(body)
         if (!data.chatId || !data.text || !data.sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'chatId, text, sessionId required' })); return }
+        logger.info({ sessionId: data.sessionId, chatId: data.chatId, text: data.text.substring(0, 50) }, 'Send message request')
         let chatId = data.chatId
         // Handle virtual contact IDs — create chat on first message
         if (chatId.startsWith('contact_')) {
