@@ -460,9 +460,15 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/sessions') {
     const active = []
-    for (const [id, entry] of sessions) { active.push({ sessionId: id, status: entry.status, phone: entry.phone, hasQr: !!entry.qrCode }) }
+    const reqCompanyId = url.searchParams.get('company_id') || null
+    for (const [id, entry] of sessions) {
+      if (reqCompanyId && entry.companyId && String(entry.companyId) !== reqCompanyId) continue
+      active.push({ sessionId: id, status: entry.status, phone: entry.phone, hasQr: !!entry.qrCode })
+    }
     if (!active.length) {
-      const { data: dbS } = await supabase.from('whatsapp_sessions').select('id,status,phone').limit(10)
+      let query = supabase.from('whatsapp_sessions').select('id,status,phone')
+      if (reqCompanyId) query = query.eq('company_id', reqCompanyId)
+      const { data: dbS } = await query.limit(10)
       if (dbS) for (const s of dbS) active.push({ sessionId: s.id, status: s.status === 'connected' ? 'connecting' : s.status, phone: s.phone })
     }
     res.writeHead(200); res.end(JSON.stringify({ sessions: active })); return
@@ -495,7 +501,10 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/connect') {
     try {
       const userId = url.searchParams.get('user_id') || null
-      const { data: newSession, error } = await supabase.from('whatsapp_sessions').insert({ status: 'connecting', user_id: userId }).select().single()
+      const companyId = url.searchParams.get('company_id') || null
+      const insertData = { status: 'connecting', user_id: userId }
+      if (companyId) insertData.company_id = companyId
+      const { data: newSession, error } = await supabase.from('whatsapp_sessions').insert(insertData).select().single()
       if (error) { res.writeHead(500); res.end(JSON.stringify({ error: error.message })); return }
       if (newSession) { startSession(newSession.id, newSession.user_id, newSession.company_id); res.writeHead(200); res.end(JSON.stringify({ sessionId: newSession.id })) }
       else { res.writeHead(500); res.end(JSON.stringify({ error: 'No session' })) }
