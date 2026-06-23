@@ -385,34 +385,42 @@ const server = http.createServer(async (req, res) => {
   // /chats — based on contacts (clientes) table, dedup by normalized phone
   if (pathname === '/chats') {
     const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
     // Get all CRM contacts (clients)
     const { data: contacts } = await supabase.from('contacts').select('id,name,phone,stage,tags,last_contacted_at,source').not('name', 'is', null)
-    // Get all WhatsApp chats for message count & last message
-    const { data: waChats } = sid ? await supabase.from('whatsapp_chats').select('*').eq('session_id', sid) : { data: [] }
+    // Get all WhatsApp chats for this session
+    const { data: waChats } = await supabase.from('whatsapp_chats').select('*').eq('session_id', sid)
     // Build phone -> chat map
     const chatByPhone = {}
     if (waChats) { for (const ch of waChats) { const p = normalizePhone(ch.remote_jid?.split('@')[0] || ''); if (p && !chatByPhone[p]) chatByPhone[p] = ch } }
-    // Build chat list from contacts, merge with whatsapp chat data
     const seen = {}; const result = []
-    const now = new Date()
     if (contacts) {
       for (const c of contacts) {
         const np = normalizePhone(c.phone || '')
         if (!np || np.length >= 14 || seen[np]) continue
         seen[np] = true
-        const chat = chatByPhone[np]
-        // Check if this contact has recent messages or any activity
-        const lastMsgAt = chat?.last_message_at || c.last_contacted_at || null
+        let chat = chatByPhone[np]
+        // Create whatsapp_chats entry for contacts without one
+        if (!chat) {
+          const jid = '55' + np + '@s.whatsapp.net'
+          const { data: newChat } = await supabase.from('whatsapp_chats').insert({
+            remote_jid: jid, contact_id: c.id, contact_name: c.name,
+            session_id: sid
+          }).select().single()
+          if (newChat) { chat = newChat; chatByPhone[np] = newChat }
+        }
+        if (!chat) continue
+        const lastMsgAt = chat.last_message_at || c.last_contacted_at || null
         // Include only contacts with WhatsApp source OR that have a chat
-        if (c.source !== 'whatsapp' && !chat) continue
+        if (c.source !== 'whatsapp' && !lastMsgAt) continue
         result.push({
-          id: chat?.id || c.id,
-          remote_jid: chat?.remote_jid || '55' + np + '@s.whatsapp.net',
-          contact_id: chat?.contact_id || c.id,
-          contact_name: chat?.contact_name || c.name,
-          last_message: chat?.last_message || null,
+          id: chat.id,
+          remote_jid: chat.remote_jid,
+          contact_id: chat.contact_id || c.id,
+          contact_name: chat.contact_name || c.name,
+          last_message: chat.last_message || null,
           last_message_at: lastMsgAt,
-          unread_count: chat?.unread_count || 0,
+          unread_count: chat.unread_count || 0,
           contact_phone: c.phone,
           contact_stage: c.stage || null,
           contact_tags: c.tags || null,
@@ -420,7 +428,7 @@ const server = http.createServer(async (req, res) => {
         })
       }
     }
-    // Sort by last_message_at DESC, then by name
+    // Sort by last_message_at DESC (newest first), then by name
     result.sort((a, b) => {
       if (a.last_message_at && b.last_message_at) return a.last_message_at > b.last_message_at ? -1 : 1
       if (a.last_message_at) return -1; if (b.last_message_at) return 1
