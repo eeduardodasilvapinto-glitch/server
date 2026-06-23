@@ -97,7 +97,7 @@ serve(async (req) => {
           .from("companies")
           .select("*")
           .eq("name", companyName)
-          .or("active.is.true,active.is.null")
+          .or("active.eq.true,active.is.null")
           .maybeSingle();
         if (!company) return json({ error: "Empresa não encontrada" }, 401);
 
@@ -106,7 +106,7 @@ serve(async (req) => {
           .select("*")
           .eq("company_id", company.id)
           .eq("name", adminName)
-          .or("active.is.true,active.is.null")
+          .or("active.eq.true,active.is.null")
           .maybeSingle();
         if (!user) return json({ error: "Usuário não encontrado" }, 401);
 
