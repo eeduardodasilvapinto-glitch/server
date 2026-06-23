@@ -30,11 +30,10 @@
     _getCompanyId: function () {
       try {
         var mode = window._companyMode;
-        if (mode && mode.id) { console.log('_getCompanyId: from _companyMode', mode.id); return mode.id; }
+        if (mode && mode.id) return mode.id;
         var sess = this.companyGetSession();
-        if (sess && sess.company) { var cid = sess.company.id || sess.company.company_id; console.log('_getCompanyId: from session', cid); return cid; }
+        if (sess && sess.company) return sess.company.id || sess.company.company_id || null;
       } catch (e) {}
-      console.warn('_getCompanyId: NO COMPANY FOUND');
       return null;
     },
 
