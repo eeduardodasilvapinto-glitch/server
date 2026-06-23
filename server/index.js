@@ -52,8 +52,8 @@ async function startSession(sessionId, userId, companyId) {
     printQRInTerminal: false,
     browser: ['Veltris CRM', 'Chrome', '1.0.0'],
     logger: pino({ level: 'silent' }),
-    markOnlineOnConnect: true,
-    syncFullHistory: true,
+    markOnlineOnConnect: false,
+    syncFullHistory: false,
   })
 
   entry.sock = sock
@@ -64,12 +64,14 @@ async function startSession(sessionId, userId, companyId) {
 
   sock.ev.on('connection.update', async ({ qr, connection, lastDisconnect }) => {
     if (qr) {
-      if (!entry.qrCode) {
-        const qrDataUrl = await QRCode.toDataURL(qr)
-        entry.qrCode = qrDataUrl
-        logger.info({ sessionId }, 'QR Code generated')
-        await supabase.from('whatsapp_sessions').update({ qr_code: qrDataUrl, status: 'connecting' }).eq('id', sessionId)
-      }
+      const qrDataUrl = await QRCode.toDataURL(qr)
+      entry.qrCode = qrDataUrl
+      logger.info({ sessionId }, 'QR Code available')
+      await supabase.from('whatsapp_sessions').update({ qr_code: qrDataUrl, status: 'connecting' }).eq('id', sessionId)
+    }
+    if (connection && entry.qrCode) {
+      entry.qrCode = null
+      await supabase.from('whatsapp_sessions').update({ qr_code: null }).eq('id', sessionId)
     }
 
     if (connection === 'open') {
