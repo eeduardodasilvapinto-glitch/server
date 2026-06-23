@@ -412,6 +412,17 @@ async function syncChatsFromStore(sessionId, companyId) {
   } catch (e) {}
 }
 
+async function getCompanyId(sid) {
+  if (!sid) return null
+  const entry = sessions.get(sid)
+  if (entry?.companyId) return entry.companyId
+  try {
+    const { data } = await supabase.from('whatsapp_sessions').select('company_id').eq('id', sid).limit(1)
+    if (data?.[0]?.company_id) return data[0].company_id
+  } catch (e) {}
+  return null
+}
+
 async function trimMessages(chatId, maxMessages = 200) {
   try {
     const { data: ids } = await supabase.from('whatsapp_messages').select('id').eq('chat_id', chatId).order('created_at', { ascending: false })
@@ -539,8 +550,11 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/chats') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const companyId = await getCompanyId(sid)
     const { data: waChats } = await supabase.from('whatsapp_chats').select('*').eq('session_id', sid).order('last_message_at', { ascending: false, nullsLast: true })
-    const { data: contacts } = await supabase.from('contacts').select('id,name,phone,stage,tags,source')
+    let query = supabase.from('contacts').select('id,name,phone,stage,tags,source')
+    if (companyId) query = query.eq('company_id', companyId)
+    const { data: contacts } = await query
     const nameByPhone = {}; const contactByPhone = {}
     if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); nameByPhone[np] = c.name || np; contactByPhone[np] = c }
     const seen = {}; const result = []
@@ -619,7 +633,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/db-contacts') {
-    const { data: dbAll } = await supabase.from('contacts').select('name,phone')
+    const sid = url.searchParams.get('sessionId')
+    const companyId = sid ? await getCompanyId(sid) : null
+    let query = supabase.from('contacts').select('name,phone')
+    if (companyId) query = query.eq('company_id', companyId)
+    const { data: dbAll } = await query
     const filtered = (dbAll || []).filter(c => c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x'))
     const seen = {}; const final = []
     for (const c of filtered) { const np = normalizePhone(c.phone); if (np && !seen[np]) { seen[np] = true; final.push(c) } }
@@ -718,9 +736,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/search-contact') {
+    const sid = url.searchParams.get('sessionId')
+    const companyId = sid ? await getCompanyId(sid) : null
     const q = url.searchParams.get('q') || ''
-    const { data: nMatch } = await supabase.from('contacts').select('name,phone').ilike('name', '%' + q + '%')
-    const { data: pMatch } = await supabase.from('contacts').select('name,phone').ilike('phone', '%' + q + '%')
+    let nQuery = supabase.from('contacts').select('name,phone').ilike('name', '%' + q + '%')
+    if (companyId) nQuery = nQuery.eq('company_id', companyId)
+    const { data: nMatch } = await nQuery
+    let pQuery = supabase.from('contacts').select('name,phone').ilike('phone', '%' + q + '%')
+    if (companyId) pQuery = pQuery.eq('company_id', companyId)
+    const { data: pMatch } = await pQuery
     res.writeHead(200); res.end(JSON.stringify({ name: nMatch || [], phone: pMatch || [] })); return
   }
 

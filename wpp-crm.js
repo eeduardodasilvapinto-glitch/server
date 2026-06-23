@@ -2521,6 +2521,16 @@ window.VeltrisWPP = (() => {
     return null;
   }
 
+  function getCurrentCompanyId() {
+    try {
+      var api = window.api;
+      if (api && api._getCompanyId) return api._getCompanyId();
+      var mode = window._companyMode;
+      if (mode && mode.id) return mode.id;
+    } catch (e) {}
+    return null;
+  }
+
   /* ============================ INIT ============================ */
   async function init() {
     S.currentUser = getCurrentUserId();
