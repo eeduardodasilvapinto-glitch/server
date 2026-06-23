@@ -33,29 +33,34 @@ function normalizePhone(raw) {
 function phoneVariants(raw) {
   const p = normalizePhone(raw)
   if (!p) return []
-  return [p, '55' + p, p.replace(/^(\d{2})/, '')]
+  return [p, '55' + p]
 }
 
-async function findContact(phone, name, companyId) {
+async function findContactByPhone(phone, companyId) {
   const variants = phoneVariants(phone)
-  // Try all phone variants
   for (const v of variants) {
     let q = supabase.from('contacts').select('id,name,phone').eq('phone', v)
     if (companyId) q = q.eq('company_id', companyId)
     const { data } = await q.limit(1)
     if (data?.length) return data[0]
   }
-  // Try by name
-  if (name && name !== phone) {
-    const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '')
-    const { data: byName } = await supabase.from('contacts').select('id,name,phone')
-    if (byName) {
-      for (const c of byName) {
-        const cn = (c.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-        if (cn === cleanName) return c
-      }
-    }
+  return null
+}
+
+async function findContactByNameOrPhone(phone, name, companyId) {
+  if (!name || name === phone) return findContactByPhone(phone, companyId)
+  const variants = phoneVariants(phone)
+  for (const v of variants) {
+    let q = supabase.from('contacts').select('id,name,phone').eq('phone', v)
+    if (companyId) q = q.eq('company_id', companyId)
+    const { data } = await q.limit(1)
+    if (data?.length) return data[0]
   }
+  // Try exact name match
+  let q = supabase.from('contacts').select('id,name,phone').eq('name', name)
+  if (companyId) q = q.eq('company_id', companyId)
+  const { data } = await q.limit(1)
+  if (data?.length) return data[0]
   return null
 }
 
@@ -145,7 +150,7 @@ async function startSession(sessionId, userId, companyId) {
       const phone = jid.split('@')[0]
       if (normalizePhone(phone).length >= 14) continue
       const name = typeof c.name === 'string' ? c.name : (typeof c.notify === 'string' ? c.notify : phone)
-      const existing = await findContact(phone, name, companyId)
+      const existing = await findContactByNameOrPhone(phone, name, companyId)
       if (existing) {
         await supabase.from('contacts').update({ name, phone: normalizePhone(phone) }).eq('id', existing.id)
       } else {
@@ -190,7 +195,7 @@ async function startSession(sessionId, userId, companyId) {
         const isFromMe = msg.key.fromMe
 
         let contactId = null
-        const existing = await findContact(phone, pushName, companyId)
+        const existing = await findContactByPhone(phone, companyId)
         if (existing) {
           contactId = existing.id
           await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', contactId)
@@ -246,7 +251,7 @@ async function syncContacts(sessionId, companyId) {
       const phone = jid.split('@')[0]
       if (normalizePhone(phone).length >= 14) continue
       const name = contact.name || contact.notify || contact.verifiedName || phone
-      const existing = await findContact(phone, name, companyId)
+      const existing = await findContactByNameOrPhone(phone, name, companyId)
       if (existing) { skipped++ }
       else {
         const p = { name, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }
