@@ -192,6 +192,10 @@ async function startSession(sessionId, userId, companyId) {
         const phone = jid.split('@')[0]
         if (normalizePhone(phone).length >= 14) continue
         const pushName = msg.pushName || phone
+        // Filter label-like pushNames: all lowercase, short, or known generic terms
+        const labelNames = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho','escritorio','comercial','recado','fax','secretaria','eletronica','vendas']
+        const cleanName = pushName.toLowerCase().trim()
+        const displayName = (cleanName.length < 3 || labelNames.includes(cleanName) || (cleanName === cleanName.replace(/[A-Z]/g, '') && cleanName.includes(' '))) ? phone : pushName
         const isFromMe = msg.key.fromMe
 
         let contactId = null
@@ -200,7 +204,7 @@ async function startSession(sessionId, userId, companyId) {
           contactId = existing.id
           await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', contactId)
         } else {
-          const p = { name: pushName, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }
+          const p = { name: displayName, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }
           if (companyId) p.company_id = companyId
           const { data: newC } = await supabase.from('contacts').insert(p).select().single()
           if (newC) contactId = newC.id
@@ -214,10 +218,10 @@ async function startSession(sessionId, userId, companyId) {
             remote_jid: jid, last_message: { text: msgContent.substring(0, 200), at: new Date().toISOString() },
             last_message_at: new Date().toISOString(),
             unread_count: isFromMe ? (existingChat.unread_count || 0) : (existingChat.unread_count || 0) + 1,
-            contact_name: pushName
+            contact_name: displayName
           }).eq('id', chatId)
         } else {
-          const p = { remote_jid: jid, contact_id: contactId, contact_name: pushName, last_message: { text: msgContent.substring(0, 200), at: new Date().toISOString() }, last_message_at: new Date().toISOString(), unread_count: isFromMe ? 0 : 1, session_id: sessionId }
+          const p = { remote_jid: jid, contact_id: contactId, contact_name: displayName, last_message: { text: msgContent.substring(0, 200), at: new Date().toISOString() }, last_message_at: new Date().toISOString(), unread_count: isFromMe ? 0 : 1, session_id: sessionId }
           if (companyId) p.company_id = companyId
           const { data: newChat } = await supabase.from('whatsapp_chats').insert(p).select().single()
           if (newChat) chatId = newChat.id
@@ -385,17 +389,10 @@ const server = http.createServer(async (req, res) => {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
     const { data: chats } = await supabase.from('whatsapp_chats').select('*').not('last_message_at', 'is', null).order('last_message_at', { ascending: false }).limit(500)
-    const { data: dbContacts } = await supabase.from('contacts').select('phone,name')
     // Dedup by normalized phone
     const seenPhone = {}; const deduped = []
     if (chats) { for (const c of chats) { const p = normalizePhone(c.remote_jid?.split('@')[0] || ''); if (p && !seenPhone[p]) { seenPhone[p] = true; deduped.push(c) } else if (!p) { deduped.push(c) } } }
-    // Map contact names from contacts table by normalized phone
-    const nameMap = {}
-    if (dbContacts) { for (const c of dbContacts) { if (c.name && !c.name.includes('@') && c.name !== c.phone && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x')) { nameMap[normalizePhone(c.phone)] = c.name } } }
-    for (const chat of deduped) {
-      const phone = normalizePhone(chat.remote_jid?.split('@')[0] || '')
-      if (nameMap[phone]) chat.contact_name = nameMap[phone]
-    }
+    // Keep original contact_name (from pushName) — don't overwrite with contacts table
     res.writeHead(200); res.end(JSON.stringify({ chats: deduped || [] })); return
   }
 
