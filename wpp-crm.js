@@ -1072,7 +1072,8 @@ window.VeltrisWPP = (() => {
     if (!contacts) contacts = await apiGet('contacts', {});
     _disparoContacts = Array.isArray(contacts) ? contacts.filter(c => c.phone) : [];
     var allContacts = Array.isArray(contacts) ? contacts : [];
-    var tags = [...new Set(allContacts.flatMap(c => c.tags || []))].sort();
+    loadSavedTags();
+    var tags = [...new Set([..._savedTags, ...allContacts.flatMap(c => c.tags || [])])].sort();
     container.innerHTML = `
       <div class="wc-disparo-card">
         <div class="wc-disparo-section">
@@ -1226,10 +1227,12 @@ window.VeltrisWPP = (() => {
       var personalized = message.replace(/\{nome\}/g, c.name || '');
       try {
         if (S._serverSessionId) {
+          var targetChatId = c.remote_jid || c.phone;
+          if (targetChatId && targetChatId.indexOf('@') < 0) targetChatId = targetChatId + '@s.whatsapp.net';
           var resp = await fetch(_wppServerUrl + '/send-message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chatId: c.phone, text: personalized, sessionId: S._serverSessionId })
+            body: JSON.stringify({ chatId: targetChatId, text: personalized, sessionId: S._serverSessionId })
           });
           if (resp.ok) sent++; else failed++;
         } else {
