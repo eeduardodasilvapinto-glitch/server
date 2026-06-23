@@ -232,6 +232,43 @@ window.VeltrisWPP = (() => {
     return S._serverSessionId || null
   }
 
+  function saveWppSession(sessionId) {
+    try { localStorage.setItem('wpp_session_' + (S.currentUser || 'default'), sessionId) } catch (e) {}
+  }
+
+  function loadWppSession() {
+    try { return localStorage.getItem('wpp_session_' + (S.currentUser || 'default')) } catch (e) { return null }
+  }
+
+  function clearWppSession() {
+    try { localStorage.removeItem('wpp_session_' + (S.currentUser || 'default')) } catch (e) {}
+  }
+
+  async function restoreWppSession() {
+    var sid = loadWppSession()
+    if (!sid) return false
+    try {
+      var hResp = await fetch(_wppServerUrl + '/health?sessionId=' + encodeURIComponent(sid))
+      if (hResp.ok) {
+        var hData = await hResp.json()
+        if (hData.connected) {
+          S._serverSessionId = sid; S.activeSessionId = sid; S.connected = true
+          S.sessions = [{ id: sid, status: 'connected', phone: hData.phone }]
+          renderConnectionStatus(); startPolling(); startRealtime(); loadChats()
+          return true
+        }
+        if (hData.status === 'connecting' || hData.status === 'unknown') {
+          S._serverSessionId = sid; S.activeSessionId = sid
+          S.sessions = [{ id: sid, status: 'connecting' }]
+          renderConnectionStatus(); startWppServerPoll(sid)
+          return true
+        }
+      }
+    } catch (e) {}
+    clearWppSession()
+    return false
+  }
+
   async function newSession() {
     if (typeof console !== 'undefined') console.log('newSession() called')
     var sessId = null
@@ -251,9 +288,9 @@ window.VeltrisWPP = (() => {
     }
 
     if (sessId) {
-      S._serverSessionId = sessId
-      S.activeSessionId = sessId
+      S._serverSessionId = sessId; S.activeSessionId = sessId
       S.sessions = [{ id: sessId, status: 'connecting' }]
+      saveWppSession(sessId)
       renderConnectionStatus()
       startWppServerPoll(sessId)
       if (typeof showToast !== 'undefined') showToast('Conectando WhatsApp...')
@@ -290,6 +327,7 @@ window.VeltrisWPP = (() => {
           var hData = await healthResp.json()
           if (hData.connected) {
             S.connected = true; S.activeSessionId = sessionId
+            saveWppSession(sessionId)
             if (window._wppServerPoll) { clearInterval(window._wppServerPoll); window._wppServerPoll = null }
             renderConnectionStatus(); startPolling(); loadChats()
             return
@@ -335,6 +373,7 @@ window.VeltrisWPP = (() => {
       try { await fetch(_wppServerUrl + '/disconnect?sessionId=' + encodeURIComponent(sid), { method: 'POST' }) } catch (e) {}
       try { await apiPatch('whatsapp_sessions', sid, { status: 'disconnected' }) } catch (e) {}
     }
+    clearWppSession()
     if (window._wppServerPoll) { clearInterval(window._wppServerPoll); window._wppServerPoll = null }
     S.connected = false;
     S.activeSessionId = null;
@@ -2475,7 +2514,10 @@ window.VeltrisWPP = (() => {
   async function init() {
     S.currentUser = getCurrentUserId();
     initTabs();
-    await loadSessions();
+    var restored = await restoreWppSession();
+    if (!restored) {
+      await loadSessions();
+    }
     if (S.connected) {
       await loadChats();
     }
