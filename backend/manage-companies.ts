@@ -97,18 +97,18 @@ serve(async (req) => {
           .from("companies")
           .select("*")
           .eq("name", companyName)
-          .or("active.eq.true,active.is.null")
           .maybeSingle();
         if (!company) return json({ error: "Empresa não encontrada" }, 401);
+        if (company.active === false) return json({ error: "Empresa inativa" }, 401);
 
         const { data: user } = await supabase
           .from("company_users")
           .select("*")
           .eq("company_id", company.id)
           .eq("name", adminName)
-          .or("active.eq.true,active.is.null")
           .maybeSingle();
         if (!user) return json({ error: "Usuário não encontrado" }, 401);
+        if (user.active === false) return json({ error: "Usuário inativo" }, 401);
 
         const hashedInput = await hashPassword(password);
         if (user.password !== hashedInput) {
