@@ -172,8 +172,9 @@
     _supaPost: async function (table, body) {
       var cid = this._getCompanyId();
       if (cid && this._isCompanyScoped(table)) {
-        body = Object.assign({}, body, { company_id: cid });
-      }
+        filters['company_id'] = cid;
+      } else if (this._isCompanyScoped(table)) {
+        return { data: [] }; // Block if company-scoped but no company_id
       var result = await this._proxyCall('insert', table, {}, body);
       return result.data || {};
     },
