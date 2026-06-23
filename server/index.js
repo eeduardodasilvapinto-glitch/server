@@ -276,13 +276,16 @@ async function startSession(sessionId, userId, companyId) {
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return
+    logger.info({ sessionId, type, count: messages.length }, 'Messages upsert')
     for (const msg of messages) {
       try {
-        if (!msg.message) continue
+        if (!msg.message) { logger.debug({ sessionId, id: msg.key?.id }, 'No message body'); continue }
         const jid = msg.key.remoteJid
-        if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter')) continue
+        if (!jid) { logger.debug({ sessionId, id: msg.key?.id }, 'No remoteJid'); continue }
+        if (jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter')) { logger.debug({ sessionId, jid }, 'Skipping group/broadcast'); continue }
         const msgPhone = jid.split('@')[0]
-        if (msgPhone.replace(/\D/g,'').length >= 14) continue
+        if (msgPhone.replace(/\D/g,'').length >= 14) { logger.debug({ sessionId, phone: msgPhone }, 'Skipping LID'); continue }
+        logger.info({ sessionId, jid, fromMe: msg.key.fromMe }, 'Processing incoming message')
 
         let mediaUrl = null, msgType = 'text'
         if (msg.message?.audioMessage) {
