@@ -343,6 +343,10 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/sessions') {
     const active = []
     for (const [id, entry] of sessions) { active.push({ sessionId: id, status: entry.status, phone: entry.phone, hasQr: !!entry.qrCode }) }
+    if (!active.length) {
+      const { data: dbS } = await supabase.from('whatsapp_sessions').select('id,status,phone').limit(10)
+      if (dbS) for (const s of dbS) active.push({ sessionId: s.id, status: s.status === 'connected' ? 'connecting' : s.status, phone: s.phone })
+    }
     res.writeHead(200); res.end(JSON.stringify({ sessions: active })); return
   }
 
@@ -388,7 +392,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/chats') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
-    const { data: waChats } = await supabase.from('whatsapp_chats').select('*').eq('session_id', sid).not('last_message_at', 'is', null).order('last_message_at', { ascending: false })
+    const { data: waChats } = await supabase.from('whatsapp_chats').select('*').eq('session_id', sid).order('last_message_at', { ascending: false, nullsLast: true })
     const { data: contacts } = await supabase.from('contacts').select('id,name,phone,stage,tags,source')
     const nameByPhone = {}
     if (contacts) for (const c of contacts) nameByPhone[normalizePhone(c.phone || '')] = c
