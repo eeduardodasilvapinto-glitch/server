@@ -147,10 +147,21 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost')
   const pathname = url.pathname
 
-  // /health — always responds immediately
+  // /health — supports ?sessionId=xxx
   if (pathname === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ status: 'ok', pid: process.pid }))
+    let sid = url.searchParams.get('sessionId')
+    let entry = sid ? sessions.get(sid) : null
+    if (entry) {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ sessionId: sid, connected: entry.status === 'connected', status: entry.status, phone: entry.phone }))
+    } else if (sid) {
+      const { data: dbS } = await supabase.from('whatsapp_sessions').select('status,phone').eq('id', sid).limit(1)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ sessionId: sid, connected: dbS?.[0]?.status === 'connected', status: dbS?.[0]?.status || 'unknown', phone: dbS?.[0]?.phone || null }))
+    } else {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ status: 'ok', pid: process.pid, sessionsCount: sessions.size }))
+    }
     return
   }
 
