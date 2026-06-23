@@ -167,14 +167,21 @@ serve(async (req) => {
       }
 
       case "create": {
-        const { name, permissions } = data;
+        const { name, permissions, active, adminName, adminPassword } = data;
         if (!name) return json({ error: "Nome da empresa é obrigatório" }, 400);
         const { data: company, error } = await supabase
           .from("companies")
-          .insert({ name, permissions: permissions || {} })
+          .insert({ name, permissions: permissions || {}, active: active !== false })
           .select()
           .single();
         if (error) return json({ error: error.message }, 500);
+        if (adminName && adminPassword) {
+          const hashedPw = await hashPassword(adminPassword);
+          const { error: userErr } = await supabase
+            .from("company_users")
+            .insert({ company_id: company.id, name: adminName, password: hashedPw, role: "admin", active: true });
+          if (userErr) console.error("Error creating admin user:", userErr.message);
+        }
         return json({ company });
       }
 
