@@ -56,7 +56,6 @@ async function findContactByNameOrPhone(phone, name, companyId) {
     const { data } = await q.limit(1)
     if (data?.length) return data[0]
   }
-  // Try exact name match
   let q = supabase.from('contacts').select('id,name,phone').eq('name', name)
   if (companyId) q = q.eq('company_id', companyId)
   const { data } = await q.limit(1)
@@ -88,6 +87,14 @@ async function startSession(sessionId, userId, companyId) {
   const authDir = path.join(AUTH_BASE, sessionId)
   if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true })
 
+  try {
+    const { data: sessionData } = await supabase.from('whatsapp_sessions').select('auth_creds').eq('id', sessionId).limit(1)
+    if (sessionData?.[0]?.auth_creds) {
+      fs.writeFileSync(path.join(authDir, 'creds.json'), JSON.stringify(sessionData[0].auth_creds))
+      logger.info({ sessionId }, 'Auth restored from Supabase')
+    }
+  } catch (e) { logger.warn({ sessionId }, 'No auth stored yet') }
+
   const entry = { sock: null, authDir, qrCode: null, outgoingInterval: null, reconnectTimeout: null, phone: null, status: 'connecting', userId, companyId, labels: {}, chatLabels: {} }
   sessions.set(sessionId, entry)
 
@@ -105,13 +112,21 @@ async function startSession(sessionId, userId, companyId) {
 
   entry.sock = sock
 
-  sock.ev.on('creds.update', saveCreds)
+  sock.ev.on('creds.update', async () => {
+    await saveCreds()
+    try {
+      const credsPath = path.join(authDir, 'creds.json')
+      if (fs.existsSync(credsPath)) {
+        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf-8'))
+        await supabase.from('whatsapp_sessions').update({ auth_creds: creds }).eq('id', sessionId)
+      }
+    } catch (e) {}
+  })
 
   sock.ev.on('connection.update', async ({ qr, connection, lastDisconnect }) => {
     if (qr) {
       const qrDataUrl = await QRCode.toDataURL(qr)
       entry.qrCode = qrDataUrl
-      logger.info({ sessionId }, 'QR available')
       await supabase.from('whatsapp_sessions').update({ qr_code: qrDataUrl, status: 'connecting' }).eq('id', sessionId)
     }
     if (connection && entry.qrCode) {
@@ -119,7 +134,6 @@ async function startSession(sessionId, userId, companyId) {
       await supabase.from('whatsapp_sessions').update({ qr_code: null }).eq('id', sessionId)
     }
     if (connection === 'open') {
-      logger.info({ sessionId }, 'Connected')
       entry.status = 'connected'
       const rawId = sock.user?.id || ''
       const phone = rawId.split(':')[0] || ''
@@ -131,7 +145,6 @@ async function startSession(sessionId, userId, companyId) {
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut
-      logger.info({ sessionId, code: statusCode }, 'Disconnected')
       entry.status = shouldReconnect ? 'connecting' : 'disconnected'
       entry.qrCode = null; entry.sock = null
       await supabase.from('whatsapp_sessions').update({ status: entry.status }).eq('id', sessionId)
@@ -179,22 +192,21 @@ async function startSession(sessionId, userId, companyId) {
           try {
             const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock?.updateMediaMessage })
             if (buf) { const fname = sessionId + '_' + msg.key.id + '.ogg'; fs.writeFileSync(path.join(MEDIA_DIR, fname), buf); mediaUrl = '/media/' + fname }
-          } catch (e) { logger.warn({ sessionId, error: e.message }, 'Audio download failed') }
+          } catch (e) {}
         }
         if (msg.message?.imageMessage) {
           msgType = 'image'
           try {
             const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock?.updateMediaMessage })
             if (buf) { const fname = sessionId + '_' + msg.key.id + '.jpg'; fs.writeFileSync(path.join(MEDIA_DIR, fname), buf); mediaUrl = '/media/' + fname }
-          } catch (e) { logger.warn({ sessionId, error: e.message }, 'Image download failed') }
+          } catch (e) {}
         }
 
-        const msgContent = msgType === 'audio' ? 'Mensagem de áudio' : msgType === 'image' ? 'Foto' : msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || msg.message.videoMessage?.caption || msg.message.documentMessage?.caption || ''
+        const msgContent = msgType === 'audio' ? 'Mensagem de �udio' : msgType === 'image' ? 'Foto' : msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || msg.message.videoMessage?.caption || msg.message.documentMessage?.caption || ''
         if (!msgContent && !mediaUrl) continue
         const phone = jid.split('@')[0]
         if (normalizePhone(phone).length >= 14) continue
         const pushName = msg.pushName || phone
-        // Filter label-like pushNames: all lowercase, short, or known generic terms
         const labelNames = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho','escritorio','comercial','recado','fax','secretaria','eletronica','vendas']
         const cleanName = pushName.toLowerCase().trim()
         const displayName = (cleanName.length < 3 || labelNames.includes(cleanName) || (cleanName === cleanName.replace(/[A-Z]/g, '') && cleanName.includes(' '))) ? phone : pushName
@@ -238,9 +250,7 @@ async function startSession(sessionId, userId, companyId) {
             await supabase.from('whatsapp_messages').insert(mp)
           }
         }
-      } catch (e) {
-        logger.error({ sessionId, error: e.message }, 'Msg upsert error')
-      }
+      } catch (e) {}
     }
   })
 }
@@ -266,7 +276,7 @@ async function syncContacts(sessionId, companyId) {
       }
     }
     logger.info({ sessionId, synced, skipped }, 'Contacts synced')
-  } catch (e) { logger.error({ sessionId, error: e.message }, 'Sync contacts error') }
+  } catch (e) {}
 }
 
 async function syncChatsFromStore(sessionId, companyId) {
@@ -289,7 +299,7 @@ async function syncChatsFromStore(sessionId, companyId) {
       await supabase.from('whatsapp_chats').insert(p); created++
     }
     if (created) logger.info({ sessionId, created }, 'Chats synced from store')
-  } catch (e) { logger.error({ sessionId, error: e.message }, 'Sync chats error') }
+  } catch (e) {}
 }
 
 async function pollSessions() {
@@ -301,14 +311,13 @@ async function pollSessions() {
       if (dbS.status === 'connected' && !sessions.has(dbS.id)) { startSession(dbS.id, dbS.user_id, dbS.company_id) }
       else if (dbS.status === 'connecting' && !sessions.has(dbS.id)) { if (!latestConnecting) latestConnecting = dbS }
       else if (dbS.status === 'disconnected' && sessions.has(dbS.id)) {
-        const entry = sessions.get(dbS.id)
-        if (entry.sock) { try { entry.sock.logout() } catch {} }
-        entry.sock = null; if (entry.reconnectTimeout) { clearTimeout(entry.reconnectTimeout); entry.reconnectTimeout = null }
+        const entry = sessions.get(dbS.id); if (entry.sock) try { entry.sock.logout() } catch {}; entry.sock = null
+        if (entry.reconnectTimeout) { clearTimeout(entry.reconnectTimeout); entry.reconnectTimeout = null }
         try { fs.rmSync(entry.authDir, { recursive: true, force: true }) } catch {}; sessions.delete(dbS.id)
       }
     }
     if (latestConnecting && !sessions.has(latestConnecting.id)) { startSession(latestConnecting.id, latestConnecting.user_id, latestConnecting.company_id) }
-  } catch (e) { logger.error({ error: e.message }, 'Poll error') }
+  } catch (e) {}
 }
 
 const server = http.createServer(async (req, res) => {
@@ -320,7 +329,6 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost')
   const pathname = url.pathname
 
-  // /health
   if (pathname === '/health') {
     let sid = url.searchParams.get('sessionId')
     let entry = sid ? sessions.get(sid) : null
@@ -332,22 +340,18 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ status: 'ok', pid: process.pid, sessionsCount: sessions.size })); return
   }
 
-  // /sessions
   if (pathname === '/sessions') {
     const active = []
     for (const [id, entry] of sessions) { active.push({ sessionId: id, status: entry.status, phone: entry.phone, hasQr: !!entry.qrCode }) }
-    // Don't fallback to DB sessions that lost their socket — they need reconnect
     res.writeHead(200); res.end(JSON.stringify({ sessions: active })); return
   }
 
-  // /qr 
   if (pathname === '/qr') {
     const sid = url.searchParams.get('sessionId')
     const entry = sid ? sessions.get(sid) : null
     res.writeHead(200); res.end(JSON.stringify({ qr_code: entry?.qrCode || null })); return
   }
 
-  // /connect
   if (pathname === '/connect') {
     try {
       const userId = url.searchParams.get('user_id') || null
@@ -359,7 +363,6 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  // /disconnect
   if (pathname === '/disconnect' && req.method === 'POST') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
@@ -369,7 +372,6 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true })); return
   }
 
-  // /contacts
   if (pathname === '/contacts') {
     const sid = url.searchParams.get('sessionId')
     const entry = sid ? sessions.get(sid) : null
@@ -383,97 +385,41 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ contacts: list })); return
   }
 
-  // /chats — based on contacts (clientes) table, dedup by normalized phone
   if (pathname === '/chats') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
-    // Get all CRM contacts (clients)
-    const { data: contacts } = await supabase.from('contacts').select('id,name,phone,stage,tags,last_contacted_at,source').not('name', 'is', null)
-    // Get all WhatsApp chats for this session
-    const { data: waChats } = await supabase.from('whatsapp_chats').select('*').eq('session_id', sid)
-    // Build phone -> chat map
-    const chatByPhone = {}
-    if (waChats) { for (const ch of waChats) { const p = normalizePhone(ch.remote_jid?.split('@')[0] || ''); if (p && !chatByPhone[p]) chatByPhone[p] = ch } }
+    const { data: waChats } = await supabase.from('whatsapp_chats').select('*').eq('session_id', sid).not('last_message_at', 'is', null).order('last_message_at', { ascending: false })
+    const { data: contacts } = await supabase.from('contacts').select('id,name,phone,stage,tags,source')
+    const nameByPhone = {}
+    if (contacts) for (const c of contacts) nameByPhone[normalizePhone(c.phone || '')] = c
     const seen = {}; const result = []
-    if (contacts) {
-      for (const c of contacts) {
-        const np = normalizePhone(c.phone || '')
+    if (waChats) {
+      for (const ch of waChats) {
+        const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
         if (!np || np.length >= 14 || seen[np]) continue
         seen[np] = true
-        let chat = chatByPhone[np]
-        // Create whatsapp_chats entry for contacts without one
-        if (!chat) {
-          const jid = '55' + np + '@s.whatsapp.net'
-          const { data: newChat } = await supabase.from('whatsapp_chats').insert({
-            remote_jid: jid, contact_id: c.id, contact_name: c.name,
-            session_id: sid
-          }).select().single()
-          if (newChat) { chat = newChat; chatByPhone[np] = newChat }
-        }
-        if (!chat) continue
-        const lastMsgAt = chat.last_message_at || c.last_contacted_at || null
-        // Include only contacts with WhatsApp source OR that have a chat
-        if (c.source !== 'whatsapp' && !lastMsgAt) continue
-        result.push({
-          id: chat.id,
-          remote_jid: chat.remote_jid,
-          contact_id: chat.contact_id || c.id,
-          contact_name: chat.contact_name || c.name,
-          last_message: chat.last_message || null,
-          last_message_at: lastMsgAt,
-          unread_count: chat.unread_count || 0,
-          contact_phone: c.phone,
-          contact_stage: c.stage || null,
-          contact_tags: c.tags || null,
-          session_id: sid,
-        })
+        const contact = nameByPhone[np]
+        result.push({ id: ch.id, remote_jid: ch.remote_jid, contact_id: ch.contact_id, contact_name: contact?.name || ch.contact_name, last_message: ch.last_message, last_message_at: ch.last_message_at, unread_count: ch.unread_count || 0, contact_phone: contact?.phone || np, contact_stage: contact?.stage || null, contact_tags: contact?.tags || null, session_id: sid })
       }
     }
-    // Sort by last_message_at DESC (newest first), then by name
-    result.sort((a, b) => {
-      if (a.last_message_at && b.last_message_at) return a.last_message_at > b.last_message_at ? -1 : 1
-      if (a.last_message_at) return -1; if (b.last_message_at) return 1
-      return (a.contact_name || '').localeCompare(b.contact_name || '')
-    })
     res.writeHead(200); res.end(JSON.stringify({ chats: result })); return
   }
 
-  // /messages
   if (pathname === '/messages') {
     const cid = url.searchParams.get('chatId')
     if (!cid) { res.writeHead(400); res.end(JSON.stringify({ error: 'chatId required' })); return }
     let { data: messages } = await supabase.from('whatsapp_messages').select('*').eq('chat_id', cid).order('created_at', { ascending: false }).limit(500)
-    // If no messages found, try to find by phone (recover orphaned messages)
     if (!messages?.length) {
       const { data: chat } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', cid).limit(1)
       if (chat?.length) {
         const np = normalizePhone(chat[0].remote_jid?.split('@')[0] || '')
-        // Search messages by ALL chats with same phone, including orphaned
         const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid')
-        const matchIds = []
-        if (allChats) { for (const ch of allChats) { if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np) matchIds.push(ch.id) } }
-        // Also search orphaned messages (no matching chat)
-        const { data: orphaned } = await supabase.from('whatsapp_messages').select('id,chat_id').limit(50000)
-        const validIds = new Set((allChats || []).map(ch => ch.id))
-        if (orphaned) {
-          for (const msg of orphaned) {
-            if (!validIds.has(msg.chat_id) && !matchIds.includes(msg.chat_id)) {
-              // This orphan belongs to this phone — migrate it
-              const { data: orphanChat } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', msg.chat_id).limit(1)
-              if (orphanChat?.length) {
-                const op = normalizePhone(orphanChat[0].remote_jid?.split('@')[0] || '')
-                if (op === np) matchIds.push(msg.chat_id)
-              }
-            }
-          }
-        }
-        if (matchIds.length) {
-          const { data } = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).limit(500)
-          if (data?.length) {
-            messages = data
-            // Migrate all to the current chat_id
-            for (const mid of matchIds) { if (mid !== cid) await supabase.from('whatsapp_messages').update({ chat_id: cid }).eq('chat_id', mid) }
-          }
+        const matchIds = [cid]
+        if (allChats) for (const ch of allChats) { if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np && ch.id !== cid) matchIds.push(ch.id) }
+        const { data } = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).limit(500)
+        if (data?.length) {
+          messages = data
+          for (const mid of matchIds) { if (mid !== cid) { await supabase.from('whatsapp_messages').update({ chat_id: cid }).eq('chat_id', mid); await supabase.from('whatsapp_chats').delete().eq('id', mid) } }
         }
       }
     }
@@ -481,7 +427,6 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ messages: messages || [] })); return
   }
 
-  // /db-contacts
   if (pathname === '/db-contacts') {
     const { data: dbAll } = await supabase.from('contacts').select('name,phone')
     const filtered = (dbAll || []).filter(c => c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x'))
@@ -490,78 +435,6 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ contacts: final })); return
   }
 
-  // /remove-lids
-  if (pathname === '/remove-lids') {
-    const { data: allC } = await supabase.from('contacts').select('id,name,phone')
-    const toRemove = (allC || []).filter(c => { const p = normalizePhone(c.phone || ''); return p.length >= 14 })
-    if (toRemove.length) { await supabase.from('contacts').delete().in('id', toRemove.map(c => c.id)) }
-    res.writeHead(200); res.end(JSON.stringify({ ok: true, removed: toRemove.length })); return
-  }
-
-  // /deduplicate-contacts
-  if (pathname === '/deduplicate-contacts') {
-    const { data: all } = await supabase.from('contacts').select('id,name,phone').order('created_at', { ascending: true })
-    const seen = {}; const toDelete = []
-    if (all) {
-      for (const c of all) {
-        const key = normalizePhone(c.phone) + '|' + ((c.name || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
-        if (seen[key]) { toDelete.push(c.id) }
-        else { seen[key] = true }
-      }
-    }
-    if (toDelete.length) { await supabase.from('contacts').delete().in('id', toDelete) }
-    res.writeHead(200); res.end(JSON.stringify({ ok: true, removed: toDelete.length })); return
-  }
-
-  // /recover-orphaned-messages — reassign messages whose chat was deleted
-  if (pathname === '/recover-orphaned-messages') {
-    const { data: allMsgs } = await supabase.from('whatsapp_messages').select('id,chat_id').limit(50000)
-    const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid')
-    const validIds = new Set((allChats || []).map(ch => ch.id))
-    const jidById = {}
-    if (allChats) for (const ch of allChats) jidById[ch.id] = ch.remote_jid
-    let recovered = 0
-    if (allMsgs) {
-      for (const msg of allMsgs) {
-        if (!validIds.has(msg.chat_id)) {
-          // Find the chat for this message by looking at chat->remote_jid->phone match
-          const oldJid = jidById[msg.chat_id]
-          if (oldJid) {
-            const np = normalizePhone(oldJid.split('@')[0] || '')
-            for (const ch of (allChats || [])) {
-              const cp = normalizePhone(ch.remote_jid?.split('@')[0] || '')
-              if (cp === np) {
-                await supabase.from('whatsapp_messages').update({ chat_id: ch.id }).eq('id', msg.id)
-                recovered++
-                break
-              }
-            }
-          }
-        }
-      }
-    }
-    res.writeHead(200); res.end(JSON.stringify({ ok: true, recovered })); return
-  }
-  if (pathname === '/cleanup-chat-dups') {
-    const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid').order('created_at', { ascending: true })
-    const seen = {}; let removed = 0
-    if (allChats) {
-      for (const c of allChats) {
-        const norm = normalizePhone(c.remote_jid?.split('@')[0] || '')
-        if (norm && seen[norm]) {
-          // Migrate messages from duplicate chat to the kept one
-          await supabase.from('whatsapp_messages').update({ chat_id: seen[norm] }).eq('chat_id', c.id)
-          await supabase.from('whatsapp_chats').delete().eq('id', c.id)
-          removed++
-        } else if (norm) {
-          seen[norm] = c.id
-        }
-      }
-    }
-    res.writeHead(200); res.end(JSON.stringify({ ok: true, removed })); return
-  }
-
-  // /send-message
   if (pathname === '/send-message' && req.method === 'POST') {
     let body = ''
     req.on('data', chunk => body += chunk)
@@ -576,7 +449,6 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  // /mark-read
   if (pathname === '/mark-read' && req.method === 'POST') {
     let body = ''
     req.on('data', chunk => body += chunk)
@@ -591,7 +463,6 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  // /search-contact
   if (pathname === '/search-contact') {
     const q = url.searchParams.get('q') || ''
     const { data: nMatch } = await supabase.from('contacts').select('name,phone').ilike('name', '%' + q + '%')
@@ -599,14 +470,12 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ name: nMatch || [], phone: pMatch || [] })); return
   }
 
-  // /debug
   if (pathname === '/debug') {
-    const { data: mData } = await supabase.from('whatsapp_messages').select('id').limit(10000)
-    const { data: cData } = await supabase.from('whatsapp_chats').select('id').limit(5000)
+    const { data: mData } = await supabase.from('whatsapp_messages').select('id').limit(50000)
+    const { data: cData } = await supabase.from('whatsapp_chats').select('id').limit(50000)
     res.writeHead(200); res.end(JSON.stringify({ chats: cData?.length || 0, messages: mData?.length || 0 })); return
   }
 
-  // /media files
   if (pathname.startsWith('/media/')) {
     const filePath = path.join(MEDIA_DIR, pathname.replace('/media/', '').replace(/[^a-zA-Z0-9\-_\.]/g, ''))
     if (fs.existsSync(filePath)) {
@@ -621,13 +490,9 @@ const server = http.createServer(async (req, res) => {
 })
 
 server.listen(HTTP_PORT, () => logger.info({ port: HTTP_PORT }, 'Listening'))
-
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) { logger.fatal('Env vars missing'); process.exit(1) }
-
 setInterval(pollSessions, 10000)
 pollSessions()
-
 logger.info('Veltris WPP Server (multi-session) is running.')
-
 process.on('SIGINT', () => process.exit(0))
 process.on('SIGTERM', () => process.exit(0))
