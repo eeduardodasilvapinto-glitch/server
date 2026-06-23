@@ -412,7 +412,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/messages') {
     const cid = url.searchParams.get('chatId')
     if (!cid) { res.writeHead(400); res.end(JSON.stringify({ error: 'chatId required' })); return }
-    let { data: messages } = await supabase.from('whatsapp_messages').select('*').eq('chat_id', cid).order('created_at', { ascending: false }).limit(500)
+    let { data: messages } = await supabase.from('whatsapp_messages').select('*').eq('chat_id', cid).order('created_at', { ascending: false }).range(0, 999)
     if (!messages?.length) {
       const { data: chat } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', cid).limit(1)
       if (chat?.length) {
@@ -420,7 +420,7 @@ const server = http.createServer(async (req, res) => {
         const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid')
         const matchIds = [cid]
         if (allChats) for (const ch of allChats) { if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np && ch.id !== cid) matchIds.push(ch.id) }
-        const { data } = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).limit(500)
+        const { data } = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).range(0, 999)
         if (data?.length) {
           messages = data
           for (const mid of matchIds) { if (mid !== cid) { await supabase.from('whatsapp_messages').update({ chat_id: cid }).eq('chat_id', mid); await supabase.from('whatsapp_chats').delete().eq('id', mid) } }
