@@ -66,7 +66,8 @@ async function findContactByNameOrPhone(phone, name, companyId) {
 
 async function findChat(jid, sessionId) {
   const phone = jid.split('@')[0]
-  const variants = [jid, phone, phone + '@s.whatsapp.net']
+  const np = normalizePhone(phone)
+  const variants = [jid, phone, phone + '@s.whatsapp.net', np, '55' + np, '55' + np + '@s.whatsapp.net']
   for (const v of variants) {
     let q = supabase.from('whatsapp_chats').select('id,unread_count').eq('remote_jid', v)
     if (sessionId) q = q.eq('session_id', sessionId)
@@ -441,8 +442,25 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/messages') {
     const cid = url.searchParams.get('chatId')
     if (!cid) { res.writeHead(400); res.end(JSON.stringify({ error: 'chatId required' })); return }
-    const { data: messages } = await supabase.from('whatsapp_messages').select('*').eq('chat_id', cid).order('created_at', { ascending: false }).limit(500)
-    if (messages) messages.reverse()
+    let { data: messages } = await supabase.from('whatsapp_messages').select('*').eq('chat_id', cid).order('created_at', { ascending: false }).limit(500)
+    // If no messages found, try to find by phone (migrate from duplicate chats)
+    if (!messages?.length) {
+      const { data: chat } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', cid).limit(1)
+      if (chat?.length) {
+        const np = normalizePhone(chat[0].remote_jid?.split('@')[0] || '')
+        const { data: allChats } = await supabase.from('whatsapp_chats').select('id')
+        if (allChats) {
+          for (const ch of allChats) {
+            const p = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+            if (p === np && ch.id !== cid) {
+              const { data } = await supabase.from('whatsapp_messages').select('*').eq('chat_id', ch.id).order('created_at', { ascending: false }).limit(500)
+              if (data?.length) { messages = data; await supabase.from('whatsapp_messages').update({ chat_id: cid }).eq('chat_id', ch.id); await supabase.from('whatsapp_chats').delete().eq('id', ch.id); break }
+            }
+          }
+        }
+      }
+    }
+    if (messages?.length) messages.reverse()
     res.writeHead(200); res.end(JSON.stringify({ messages: messages || [] })); return
   }
 
@@ -478,11 +496,23 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, removed: toDelete.length })); return
   }
 
-  // /cleanup-chat-dups
+  // /cleanup-chat-dups — dedup chats by phone, migrate messages first
   if (pathname === '/cleanup-chat-dups') {
     const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid').order('created_at', { ascending: true })
     const seen = {}; let removed = 0
-    if (allChats) { for (const c of allChats) { const norm = normalizePhone(c.remote_jid?.split('@')[0] || ''); if (norm && seen[norm]) { await supabase.from('whatsapp_chats').delete().eq('id', c.id); removed++ } else if (norm) { seen[norm] = true } } }
+    if (allChats) {
+      for (const c of allChats) {
+        const norm = normalizePhone(c.remote_jid?.split('@')[0] || '')
+        if (norm && seen[norm]) {
+          // Migrate messages from duplicate chat to the kept one
+          await supabase.from('whatsapp_messages').update({ chat_id: seen[norm] }).eq('chat_id', c.id)
+          await supabase.from('whatsapp_chats').delete().eq('id', c.id)
+          removed++
+        } else if (norm) {
+          seen[norm] = c.id
+        }
+      }
+    }
     res.writeHead(200); res.end(JSON.stringify({ ok: true, removed })); return
   }
 
