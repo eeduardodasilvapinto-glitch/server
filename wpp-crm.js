@@ -606,9 +606,11 @@ window.VeltrisWPP = (() => {
         if (resp.ok) {
           var data = await resp.json()
           var newMsgs = data.messages || []
-          // Replace messages after send to get real server IDs
-          S.messages = newMsgs
-          renderMessages()
+          // Only rebuild if count changed (preserves audio playback)
+          if (newMsgs.length !== S.messages.length) {
+            S.messages = newMsgs
+            renderMessages()
+          }
         }
       } catch (e) {}
     } else {
