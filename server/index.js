@@ -470,16 +470,36 @@ const server = http.createServer(async (req, res) => {
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
     const { data: waChats } = await supabase.from('whatsapp_chats').select('*').eq('session_id', sid).order('last_message_at', { ascending: false, nullsLast: true })
     const { data: contacts } = await supabase.from('contacts').select('id,name,phone,stage,tags,source')
-    const nameByPhone = {}
-    if (contacts) for (const c of contacts) nameByPhone[normalizePhone(c.phone || '')] = c
+    const nameByPhone = {}; const contactByPhone = {}
+    if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); nameByPhone[np] = c.name || np; contactByPhone[np] = c }
     const seen = {}; const result = []
     if (waChats) {
       for (const ch of waChats) {
         const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
         if (!np || np.length >= 14 || seen[np]) continue
         seen[np] = true
-        const contact = nameByPhone[np]
+        const contact = contactByPhone[np]
         result.push({ id: ch.id, remote_jid: ch.remote_jid, contact_id: ch.contact_id, contact_name: contact?.name || ch.contact_name, last_message: ch.last_message, last_message_at: ch.last_message_at, unread_count: ch.unread_count || 0, contact_phone: contact?.phone || np, contact_stage: contact?.stage || null, contact_tags: contact?.tags || null, session_id: sid })
+      }
+    }
+    // Also include contacts from contacts table that have no chat yet
+    if (contacts) {
+      for (const c of contacts) {
+        const np = normalizePhone(c.phone || '')
+        if (!np || np.length >= 14 || seen[np]) continue
+        seen[np] = true
+        // Only include WhatsApp-sourced contacts or those with a real name
+        if (c.source !== 'whatsapp' && !c.name) continue
+        // Check if this contact has any messages (orphaned)
+        const { data: orphanMsgs } = await supabase.from('whatsapp_messages').select('id').limit(1)
+        // Create a virtual chat entry for this contact
+        result.push({
+          id: 'contact_' + c.id, remote_jid: np, contact_id: c.id,
+          contact_name: c.name || np,
+          last_message: null, last_message_at: null,
+          unread_count: 0, contact_phone: c.phone || np,
+          contact_stage: c.stage || null, contact_tags: c.tags || null, session_id: sid,
+        })
       }
     }
     res.writeHead(200); res.end(JSON.stringify({ chats: result })); return
@@ -488,19 +508,38 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/messages') {
     const cid = url.searchParams.get('chatId')
     if (!cid) { res.writeHead(400); res.end(JSON.stringify({ error: 'chatId required' })); return }
-    let { data: messages } = await supabase.from('whatsapp_messages').select('*').eq('chat_id', cid).order('created_at', { ascending: false }).range(0, 999)
-    // Always try to merge messages from all chats with same phone
-    const { data: chat } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', cid).limit(1)
-    if (chat?.length) {
-      const np = normalizePhone(chat[0].remote_jid?.split('@')[0] || '')
-      const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid')
-      const matchIds = [cid]
-      if (allChats) for (const ch of allChats) { if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np && ch.id !== cid) matchIds.push(ch.id) }
-      if (matchIds.length > 1) {
-        const { data } = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).range(0, 999)
-        if (data?.length) {
-          messages = data
-          for (const mid of matchIds) { if (mid !== cid) { await supabase.from('whatsapp_messages').update({ chat_id: cid }).eq('chat_id', mid); await supabase.from('whatsapp_chats').delete().eq('id', mid) } }
+    let messages = []
+    // Handle virtual contact IDs (contact_ prefix)
+    if (cid.startsWith('contact_')) {
+      const contactId = cid.replace('contact_', '')
+      // Try to find messages by contact phone
+      const { data: contact } = await supabase.from('contacts').select('phone').eq('id', contactId).limit(1)
+      if (contact?.length) {
+        const np = normalizePhone(contact[0].phone || '')
+        const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid')
+        const matchIds = []
+        if (allChats) for (const ch of allChats) { if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np) matchIds.push(ch.id) }
+        if (matchIds.length) {
+          const result = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).range(0, 999)
+          if (result.data?.length) messages = result.data
+        }
+      }
+    } else {
+      const result = await supabase.from('whatsapp_messages').select('*').eq('chat_id', cid).order('created_at', { ascending: false }).range(0, 999)
+      messages = result.data || []
+      // Merge from all chats with same phone
+      const { data: chat } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', cid).limit(1)
+      if (chat?.length) {
+        const np = normalizePhone(chat[0].remote_jid?.split('@')[0] || '')
+        const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid')
+        const matchIds = [cid]
+        if (allChats) for (const ch of allChats) { if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np && ch.id !== cid) matchIds.push(ch.id) }
+        if (matchIds.length > 1) {
+          const { data } = await supabase.from('whatsapp_messages').select('*').in('chat_id', matchIds).order('created_at', { ascending: false }).range(0, 999)
+          if (data?.length) {
+            messages = data
+            for (const mid of matchIds) { if (mid !== cid) { await supabase.from('whatsapp_messages').update({ chat_id: cid }).eq('chat_id', mid); await supabase.from('whatsapp_chats').delete().eq('id', mid) } }
+          }
         }
       }
     }
@@ -554,7 +593,21 @@ const server = http.createServer(async (req, res) => {
       try {
         const data = JSON.parse(body)
         if (!data.chatId || !data.text || !data.sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'chatId, text, sessionId required' })); return }
-        await supabase.from('whatsapp_messages').insert({ chat_id: data.chatId, session_id: data.sessionId, text: data.text.substring(0, 500), direction: 'sent', created_at: new Date().toISOString() })
+        let chatId = data.chatId
+        // Handle virtual contact IDs — create chat on first message
+        if (chatId.startsWith('contact_')) {
+          const contactId = chatId.replace('contact_', '')
+          const { data: contact } = await supabase.from('contacts').select('phone,name').eq('id', contactId).limit(1)
+          if (contact?.length) {
+            const jid = '55' + normalizePhone(contact[0].phone || '') + '@s.whatsapp.net'
+            const { data: newChat } = await supabase.from('whatsapp_chats').insert({
+              remote_jid: jid, contact_id: contactId, contact_name: contact[0].name,
+              session_id: data.sessionId
+            }).select().single()
+            if (newChat) chatId = newChat.id
+          }
+        }
+        await supabase.from('whatsapp_messages').insert({ chat_id: chatId, session_id: data.sessionId, text: data.text.substring(0, 500), direction: 'sent', created_at: new Date().toISOString() })
         res.writeHead(200); res.end(JSON.stringify({ ok: true }))
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
