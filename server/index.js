@@ -361,6 +361,8 @@ async function startSession(sessionId, userId, companyId) {
       } catch (e) {
         logger.error({ sessionId, error: e.message, stack: e.stack?.substring(0, 200) }, 'Msg processing error')
       }
+    }
+  })
 }
 
 async function syncContacts(sessionId, companyId) {
