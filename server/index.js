@@ -392,7 +392,23 @@ const server = http.createServer(async (req, res) => {
     // Dedup by normalized phone
     const seenPhone = {}; const deduped = []
     if (chats) { for (const c of chats) { const p = normalizePhone(c.remote_jid?.split('@')[0] || ''); if (p && !seenPhone[p]) { seenPhone[p] = true; deduped.push(c) } else if (!p) { deduped.push(c) } } }
-    // Keep original contact_name (from pushName) — don't overwrite with contacts table
+    // Update contact_name from contacts table if chat name is a label/phone
+    const { data: dbContacts } = await supabase.from('contacts').select('phone,name')
+    const nameByPhone = {}
+    if (dbContacts) { for (const c of dbContacts) { if (c.name && !c.name.includes('@') && c.name !== c.phone && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x')) { nameByPhone[normalizePhone(c.phone)] = c.name } } }
+    const labelNames = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho','escritorio','comercial','recado','fax','secretaria','eletronica','vendas']
+    for (const chat of deduped) {
+      const phone = normalizePhone(chat.remote_jid?.split('@')[0] || '')
+      const contactName = nameByPhone[phone]
+      if (!contactName) continue
+      const curName = (chat.contact_name || '').toLowerCase().trim()
+      // Replace if current name is: phone number, short label, or all-lowercase generic phrase
+      const isLabel = !chat.contact_name || chat.contact_name === phone || chat.contact_name === chat.remote_jid || curName.length < 3 || labelNames.includes(curName) || (curName === curName.replace(/[A-Z]/g, '') && curName.includes(' '))
+      if (isLabel && contactName !== chat.contact_name) {
+        chat.contact_name = contactName
+        await supabase.from('whatsapp_chats').update({ contact_name: contactName }).eq('id', chat.id)
+      }
+    }
     res.writeHead(200); res.end(JSON.stringify({ chats: deduped || [] })); return
   }
 
