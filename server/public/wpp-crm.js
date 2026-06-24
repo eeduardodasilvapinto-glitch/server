@@ -1250,33 +1250,30 @@ window.VeltrisWPP = (() => {
     var file = input.files[0]
     if (!S._serverSessionId) { alert('Conecte o WhatsApp primeiro'); return }
     var reader = new FileReader()
-    reader.onload = async function(e) {
-      var content = e.target.result
+    reader.onerror = function() { alert('Erro ao ler o arquivo') }
+    reader.onload = function(e) {
+      var raw = e.target.result
       var isXlsx = file.name.endsWith('.xlsx')
-      var body = { name: file.name, content: isXlsx ? btoa(String.fromCharCode.apply(null, new Uint8Array(content))) : content, sessionId: S._serverSessionId }
-      try {
-        var r = await fetch(_wppServerUrl + '/upload-spreadsheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-        if (r.ok) {
-          var d = await r.json()
-          if (!d.fileId) { alert('Erro: ' + (d.error || 'Falha ao enviar planilha')); return }
+      // Convert to base64 for XLSX, keep as text for CSV
+      var content = isXlsx ? btoa(new Uint8Array(raw).reduce(function(d,b){return d+String.fromCharCode(b)},'')) : raw
+      var body = { name: file.name, content: content, sessionId: S._serverSessionId }
+      fetch(_wppServerUrl + '/upload-spreadsheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function(r){ return r.json() }).then(function(d) {
+        if (d.fileId) {
           _selectedSpreadsheet = { fileId: d.fileId, name: d.name, rowCount: d.rowCount }
           var info = el('dispSheetInfo')
           if (info) info.innerHTML = '<span class="wc-tag" style="background:rgba(34,197,94,0.12);color:rgb(34,197,94)"><i class="fi fi-rr-check-circle"></i> ' + escHtml(d.name) + ' (' + d.rowCount + ' contatos)</span>'
           updateDisparoCount()
-          try {
-            var sr = await fetch(_wppServerUrl + '/list-spreadsheets?sessionId=' + encodeURIComponent(S._serverSessionId))
-            if (sr.ok) { var sd = await sr.json(); var sheets = sd.files || []
-              var drop = el('dispSheetDrop')
-              if (drop) drop.innerHTML = '<div class="cs-opt" data-value="" onclick="VeltrisWPP.selectSpreadsheet(\'\')">Nenhuma</div>' + sheets.map(function(s) {
-                return '<div class="cs-opt" style="display:flex;justify-content:space-between" data-value="' + s.fileId + '" onclick="VeltrisWPP.selectSpreadsheet(\'' + s.fileId + '\',\'' + escHtml(s.name) + '\', ' + s.rowCount + ')"><span>' + escHtml(s.name) + ' (' + s.rowCount + ')</span><span style="color:var(--red);cursor:pointer" onclick="event.stopPropagation();VeltrisWPP.deleteSpreadsheet(\'' + s.fileId + '\')">&times;</span></div>'
-              }).join('')
-            }
-          } catch (e) {}
+          fetch(_wppServerUrl + '/list-spreadsheets?sessionId=' + encodeURIComponent(S._serverSessionId)).then(function(sr){ return sr.json() }).then(function(sd) {
+            var sheets = sd.files || []
+            var drop = el('dispSheetDrop')
+            if (drop) drop.innerHTML = '<div class="cs-opt" data-value="" onclick="VeltrisWPP.selectSpreadsheet(\'\')">Nenhuma</div>' + sheets.map(function(s) {
+              return '<div class="cs-opt" style="display:flex;justify-content:space-between" data-value="' + s.fileId + '" onclick="VeltrisWPP.selectSpreadsheet(\'' + s.fileId + '\',\'' + escHtml(s.name) + '\', ' + s.rowCount + ')"><span>' + escHtml(s.name) + ' (' + s.rowCount + ')</span><span style="color:var(--red);cursor:pointer" onclick="event.stopPropagation();VeltrisWPP.deleteSpreadsheet(\'' + s.fileId + '\')">&times;</span></div>'
+            }).join('')
+          }).catch(function(){})
         } else {
-          var errData = await r.json().catch(function(){return{}})
-          alert('Erro ao enviar planilha: ' + (errData.error || r.status))
+          alert('Erro: ' + (d.error || 'Falha ao enviar planilha'))
         }
-      } catch (e) { alert('Erro ao enviar planilha: ' + e.message) }
+      }).catch(function(e){ alert('Erro ao enviar planilha: ' + e.message) })
     }
     if (isXlsx) reader.readAsArrayBuffer(file)
     else reader.readAsText(file)
