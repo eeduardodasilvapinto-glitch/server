@@ -666,9 +666,29 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/fix-jids') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
-    const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid').eq('session_id', sid)
+    const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id').eq('session_id', sid)
+    const { data: contacts } = await supabase.from('contacts').select('id,phone')
+    const phoneById = {}
+    if (contacts) for (const c of contacts) phoneById[c.id] = c.phone
     let fixed = 0
-    if (chats) { for (const ch of chats) { const part = ch.remote_jid?.split('@')[0] || ''; const np = normalizePhone(part); if (np && np.length === 11 && ch.remote_jid !== '55' + np + '@s.whatsapp.net') { const correctJid = '55' + np + '@s.whatsapp.net'; await supabase.from('whatsapp_chats').update({ remote_jid: correctJid }).eq('id', ch.id); fixed++ } } }
+    if (chats) {
+      for (const ch of chats) {
+        var contactPhone = ch.contact_id ? phoneById[ch.contact_id] : null
+        if (contactPhone) {
+          var np = normalizePhone(contactPhone)
+          var correctJid = '55' + np + '@s.whatsapp.net'
+          if (ch.remote_jid !== correctJid) { await supabase.from('whatsapp_chats').update({ remote_jid: correctJid }).eq('id', ch.id); fixed++ }
+        } else {
+          // Fallback: use the current remote_jid
+          var part = ch.remote_jid?.split('@')[0] || ''
+          var np = normalizePhone(part)
+          if (np && np.length >= 10 && ch.remote_jid !== '55' + np + '@s.whatsapp.net') {
+            var correctJid2 = '55' + np + '@s.whatsapp.net'
+            await supabase.from('whatsapp_chats').update({ remote_jid: correctJid2 }).eq('id', ch.id); fixed++
+          }
+        }
+      }
+    }
     res.writeHead(200); res.end(JSON.stringify({ ok: true, fixed })); return
   }
 
