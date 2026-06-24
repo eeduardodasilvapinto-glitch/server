@@ -538,6 +538,75 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, updated: total, company_id: targetCid })); return
   }
 
+  if (pathname === '/list-tags') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(200); res.end(JSON.stringify({ tags: [] })); return }
+    const companyId = await getCompanyId(sid)
+    if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ tags: [] })); return }
+    // Get tags from contacts table
+    const { data: contacts } = await supabase.from('contacts').select('tags').eq('company_id', companyId)
+    const tagSet = new Set()
+    if (contacts) for (const c of contacts) if (c.tags) for (const t of c.tags) tagSet.add(t)
+    // Also get defined tags from session auth_creds
+    const { data: sess } = await supabase.from('whatsapp_sessions').select('auth_creds').eq('company_id', companyId).limit(1)
+    if (sess?.[0]?.auth_creds?.definedTags) for (const t of sess[0].auth_creds.definedTags) tagSet.add(t)
+    res.writeHead(200); res.end(JSON.stringify({ tags: [...tagSet].sort() })); return
+  }
+
+  if (pathname === '/create-tag' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { tag, sessionId } = JSON.parse(body)
+        if (!tag || !sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'tag and sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ ok: true })); return }
+        // Store in first session's auth_creds for this company
+        const { data: sessions } = await supabase.from('whatsapp_sessions').select('id,auth_creds').eq('company_id', companyId).limit(1)
+        if (sessions?.length) {
+          const creds = sessions[0].auth_creds || {}
+          const definedTags = creds.definedTags || []
+          if (!definedTags.includes(tag)) definedTags.push(tag)
+          await supabase.from('whatsapp_sessions').update({ auth_creds: { ...creds, definedTags } }).eq('id', sessions[0].id)
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/delete-tag' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { tag, sessionId } = JSON.parse(body)
+        if (!tag || !sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'tag and sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ ok: true })); return }
+        // Remove from defined tags
+        const { data: sessions } = await supabase.from('whatsapp_sessions').select('id,auth_creds').eq('company_id', companyId).limit(1)
+        if (sessions?.length) {
+          const creds = sessions[0].auth_creds || {}
+          const definedTags = (creds.definedTags || []).filter(t => t !== tag)
+          await supabase.from('whatsapp_sessions').update({ auth_creds: { ...creds, definedTags } }).eq('id', sessions[0].id)
+        }
+        // Remove from all contacts - fetch and update
+        const { data: toUpdate } = await supabase.from('contacts').select('id,tags').eq('company_id', companyId)
+        if (toUpdate) {
+          for (const c of toUpdate) {
+            if (c.tags?.includes(tag)) {
+              await supabase.from('contacts').update({ tags: c.tags.filter(t => t !== tag) }).eq('id', c.id)
+            }
+          }
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
   if (pathname === '/manage-leads' && req.method === 'POST') {
     let body = ''
     req.on('data', c => body += c)
