@@ -173,9 +173,8 @@
       var cid = this._getCompanyId();
       if (this._isCompanyScoped(table) && !cid) return { data: [] };
       if (cid && this._isCompanyScoped(table)) {
-        filters['company_id'] = cid;
-      } else if (this._isCompanyScoped(table)) {
-        return { data: [] }; // Block if company-scoped but no company_id
+        body = Object.assign({}, body, { company_id: cid });
+      }
       var result = await this._proxyCall('insert', table, {}, body);
       return result.data || {};
     },
