@@ -464,7 +464,9 @@ const server = http.createServer(async (req, res) => {
             if (nc) chatId = nc.id
           }
         }
-        await supabase.from('whatsapp_messages').insert({ chat_id: chatId, session_id: d.sessionId, text: d.text.substring(0, 500), direction: 'sent', created_at: new Date().toISOString() })
+        const insertData = { chat_id: chatId, session_id: d.sessionId, text: d.text.substring(0, 500), direction: 'sent', created_at: new Date().toISOString() }
+        if (d.mediaUrl) { insertData.media_url = d.mediaUrl; insertData.message_type = d.messageType || 'image' }
+        await supabase.from('whatsapp_messages').insert(insertData)
         trimMessages(chatId)
         res.writeHead(200); res.end(JSON.stringify({ ok: true }))
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }

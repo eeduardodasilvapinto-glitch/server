@@ -1064,6 +1064,9 @@ window.VeltrisWPP = (() => {
 
   /* ============================ DISPAROS TAB ============================ */
   var _disparoContacts = [];
+  var _disparoTagValue = '';
+  var _selectedSpreadsheet = null;
+  var _selectedMedia = null;
 
   async function renderDisparos() {
     const container = el('wppDisparos');
@@ -1080,6 +1083,11 @@ window.VeltrisWPP = (() => {
     var allContacts = Array.isArray(contacts) ? contacts : [];
     await loadTagsFromServer();
     var tags = [...new Set([..._savedTags, ...allContacts.flatMap(c => c.tags || [])])].sort();
+    // Load saved spreadsheets
+    var spreadsheets = []
+    if (S._serverSessionId) {
+      try { var sr = await fetch(_wppServerUrl + '/list-spreadsheets?sessionId=' + encodeURIComponent(S._serverSessionId)); if (sr.ok) { var sd = await sr.json(); spreadsheets = sd.files || [] } } catch (e) {}
+    }
     container.innerHTML = `
       <div class="wc-disparo-card">
         <div class="wc-disparo-section">
@@ -1087,6 +1095,7 @@ window.VeltrisWPP = (() => {
           <div class="wc-disparo-mode">
             <label class="wc-radio-label"><input type="radio" name="dispMode" value="tag" checked onchange="VeltrisWPP.onDisparoModeChange()"> Por Tag</label>
             <label class="wc-radio-label"><input type="radio" name="dispMode" value="individual" onchange="VeltrisWPP.onDisparoModeChange()"> Individual</label>
+            <label class="wc-radio-label"><input type="radio" name="dispMode" value="spreadsheet" onchange="VeltrisWPP.onDisparoModeChange()"> Planilha</label>
           </div>
           <div id="dispTagSection">
             <div class="cs-wrap" style="position:relative;min-width:200px">
@@ -1104,10 +1113,35 @@ window.VeltrisWPP = (() => {
             <input id="dispSearch" class="wc-disparo-input" placeholder="Buscar contato..." oninput="VeltrisWPP.onDisparoSearch()" />
             <div class="wc-disparo-list" id="dispContactList"></div>
           </div>
+          <div id="dispSpreadsheetSection" style="display:none">
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <button class="btn btn-outline" onclick="document.getElementById('dispSpreadsheetInput').click()" style="font-size:0.72rem;white-space:nowrap"><i class="fi fi-rr-upload"></i> Upload CSV/XLSX</button>
+              <input id="dispSpreadsheetInput" type="file" accept=".csv,.xlsx" style="display:none" onchange="VeltrisWPP.uploadSpreadsheet(this)" />
+              <div class="cs-wrap" style="position:relative;flex:1">
+                <div class="cs-trigger" id="dispSheetTrigger" onclick="VeltrisWPP.toggleDispSheetDrop(event)">
+                  <span id="dispSheetSelected">Selecionar planilha salva</span>
+                  <span class="cs-arrow">▾</span>
+                </div>
+                <div class="cs-drop" id="dispSheetDrop">
+                  <div class="cs-opt" data-value="" onclick="VeltrisWPP.selectSpreadsheet('')">Nenhuma</div>
+                  ${spreadsheets.map(s => `<div class="cs-opt" style="display:flex;justify-content:space-between" data-value="${s.fileId}" onclick="VeltrisWPP.selectSpreadsheet('${s.fileId}','${escHtml(s.name)}',${s.rowCount})"><span>${escHtml(s.name)} (${s.rowCount})</span><span style="color:var(--red);cursor:pointer" onclick="event.stopPropagation();VeltrisWPP.deleteSpreadsheet('${s.fileId}')">&times;</span></div>`).join('')}
+                </div>
+              </div>
+            </div>
+            <div id="dispSheetInfo" style="font-size:0.75rem;color:var(--text-muted);padding:6px 0"></div>
+          </div>
         </div>
         <div class="wc-disparo-section">
           <h4>Mensagem <span class="wc-disparo-hint">Use {nome} para personalizar</span></h4>
           <textarea id="dispMessage" class="wc-disparo-textarea" placeholder="Digite a mensagem para disparo..."></textarea>
+        </div>
+        <div class="wc-disparo-section">
+          <h4>Mídia <span class="wc-disparo-hint">Opcional: anexe uma imagem ou áudio</span></h4>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline" onclick="document.getElementById('dispMediaInput').click()" style="font-size:0.72rem;white-space:nowrap"><i class="fi fi-rr-paperclip"></i> Anexar Arquivo</button>
+            <input id="dispMediaInput" type="file" accept=".jpg,.jpeg,.png,.ogg,.mp3,.mp4" style="display:none" onchange="VeltrisWPP.uploadMedia(this)" />
+            <div id="dispMediaInfo" style="font-size:0.72rem;color:var(--text-muted);display:flex;align-items:center;gap:6px"></div>
+          </div>
         </div>
         <div class="wc-disparo-footer">
           <span id="dispCount" class="wc-disparo-count">0 contatos selecionados</span>
@@ -1122,11 +1156,13 @@ window.VeltrisWPP = (() => {
     onDisparoFilterChange();
   }
 
-  var _disparoTagValue = '';
-
   function getDisparoContacts() {
     var mode = document.querySelector('[name="dispMode"]:checked');
     if (!mode) return [];
+    if (mode.value === 'spreadsheet') {
+      if (!_selectedSpreadsheet) return [];
+      return [{ _spreadsheetRows: _selectedSpreadsheet.rowCount, _fileId: _selectedSpreadsheet.fileId }]
+    }
     if (mode.value === 'tag') {
       if (!_disparoTagValue) return _disparoContacts;
       return _disparoContacts.filter(c => (c.tags || []).includes(_disparoTagValue));
@@ -1138,6 +1174,11 @@ window.VeltrisWPP = (() => {
 
   function updateDisparoCount() {
     var count = el('dispCount');
+    var mode = document.querySelector('[name="dispMode"]:checked')
+    if (mode?.value === 'spreadsheet' && _selectedSpreadsheet) {
+      if (count) count.textContent = _selectedSpreadsheet.rowCount + ' contato(s) (via planilha)';
+      return;
+    }
     var filtered = getDisparoContacts();
     if (count) count.textContent = filtered.length + ' contato(s) selecionado(s)';
     return filtered;
@@ -1175,24 +1216,16 @@ window.VeltrisWPP = (() => {
     if (!mode) return;
     var tagSec = el('dispTagSection');
     var indSec = el('dispIndividualSection');
-    if (mode.value === 'tag') {
-      if (tagSec) tagSec.style.display = '';
-      if (indSec) indSec.style.display = 'none';
-    } else {
-      if (tagSec) tagSec.style.display = 'none';
-      if (indSec) indSec.style.display = '';
-      renderDisparoContactList();
-    }
+    var sheetSec = el('dispSpreadsheetSection');
+    [tagSec, indSec, sheetSec].forEach(function(s) { if (s) s.style.display = 'none' })
+    if (mode.value === 'tag' && tagSec) tagSec.style.display = ''
+    else if (mode.value === 'individual' && indSec) { indSec.style.display = ''; renderDisparoContactList() }
+    else if (mode.value === 'spreadsheet' && sheetSec) sheetSec.style.display = ''
     updateDisparoCount();
   }
 
-  function onDisparoFilterChange() {
-    updateDisparoCount();
-  }
-
-  function onDisparoSearch() {
-    renderDisparoContactList();
-  }
+  function onDisparoFilterChange() { updateDisparoCount(); }
+  function onDisparoSearch() { renderDisparoContactList(); }
 
   function renderDisparoContactList() {
     var list = el('dispContactList');
@@ -1211,6 +1244,82 @@ window.VeltrisWPP = (() => {
     `).join('') || '<div class="wc-disparo-empty">Nenhum contato encontrado</div>';
   }
 
+  // ── Spreadsheet functions ──
+  function uploadSpreadsheet(input) {
+    if (!input || !input.files?.[0]) return
+    var file = input.files[0]
+    var reader = new FileReader()
+    reader.onload = async function(e) {
+      var content = e.target.result
+      var isXlsx = file.name.endsWith('.xlsx')
+      var body = { name: file.name, content: isXlsx ? btoa(String.fromCharCode(...new Uint8Array(content))) : content, sessionId: S._serverSessionId }
+      try {
+        var r = await fetch(_wppServerUrl + '/upload-spreadsheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        if (r.ok) {
+          var d = await r.json()
+          _selectedSpreadsheet = { fileId: d.fileId, name: d.name, rowCount: d.rowCount }
+          el('dispSheetInfo').textContent = 'Planilha: ' + d.name + ' (' + d.rowCount + ' contatos)'
+          updateDisparoCount()
+          renderDisparos()
+        }
+      } catch (e) { alert('Erro ao enviar planilha: ' + e.message) }
+    }
+    if (isXlsx) reader.readAsArrayBuffer(file)
+    else reader.readAsText(file)
+  }
+
+  async function selectSpreadsheet(fileId, name, rowCount) {
+    if (!fileId) { _selectedSpreadsheet = null; el('dispSheetInfo').textContent = ''; updateDisparoCount(); closeDispSheetDrop(); return }
+    _selectedSpreadsheet = { fileId, name, rowCount }
+    el('dispSheetInfo').textContent = 'Planilha: ' + name + ' (' + rowCount + ' contatos)'
+    closeDispSheetDrop()
+    updateDisparoCount()
+  }
+
+  async function deleteSpreadsheet(fileId) {
+    if (!confirm('Excluir esta planilha?')) return
+    try {
+      await fetch(_wppServerUrl + '/delete-spreadsheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileId, sessionId: S._serverSessionId }) })
+      _selectedSpreadsheet = null
+      renderDisparos()
+    } catch (e) {}
+  }
+
+  function toggleDispSheetDrop(e) {
+    if (e) e.stopPropagation()
+    var drop = el('dispSheetDrop'); if (!drop) return
+    closeTagDrop('dispSheetDrop'); drop.classList.toggle('visible')
+    if (drop.classList.contains('visible')) { setTimeout(function() { document.addEventListener('click', closeDispSheetDrop); }, 10) }
+  }
+  function closeDispSheetDrop() { closeTagDrop('dispSheetDrop'); document.removeEventListener('click', closeDispSheetDrop) }
+
+  // ── Media functions ──
+  function uploadMedia(input) {
+    if (!input || !input.files?.[0]) return
+    var file = input.files[0]
+    var ext = file.name.split('.').pop().toLowerCase()
+    var reader = new FileReader()
+    reader.onload = async function(e) {
+      var base64 = e.target.result.split(',')[1] || e.target.result
+      try {
+        var r = await fetch(_wppServerUrl + '/upload-media', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: base64, ext, sessionId: S._serverSessionId }) })
+        if (r.ok) {
+          var d = await r.json()
+          _selectedMedia = { mediaUrl: d.mediaUrl, ext }
+          el('dispMediaInfo').innerHTML = '<span class="wc-tag">' + escHtml(file.name) + '</span> <button class="btn btn-outline" style="font-size:0.65rem;padding:2px 6px;border-radius:100px" onclick="VeltrisWPP.removeMedia()">&times;</button>'
+        }
+      } catch (e) {}
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function removeMedia() {
+    _selectedMedia = null
+    el('dispMediaInfo').innerHTML = ''
+    el('dispMediaInput').value = ''
+  }
+
+  // ── Send ──
   async function enviarDisparo() {
     var btn = el('dispSendBtn');
     var progress = el('dispProgress');
@@ -1220,6 +1329,27 @@ window.VeltrisWPP = (() => {
     if (!btn || !progress) return;
     var message = el('dispMessage')?.value?.trim();
     if (!message) { alert('Digite uma mensagem'); return; }
+    var mode = document.querySelector('[name="dispMode"]:checked')?.value
+
+    if (mode === 'spreadsheet') {
+      if (!_selectedSpreadsheet) { alert('Selecione ou envie uma planilha'); return }
+      btn.disabled = true; btn.textContent = 'Enviando...'; progress.style.display = 'flex'; result.style.display = 'none'
+      try {
+        var r = await fetch(_wppServerUrl + '/send-spreadsheet-disparo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileId: _selectedSpreadsheet.fileId, text: message, mediaUrl: _selectedMedia?.mediaUrl || null, messageType: _selectedMedia?.ext === 'ogg' || _selectedMedia?.ext === 'mp3' ? 'audio' : 'image', sessionId: S._serverSessionId })
+        })
+        if (r.ok) {
+          var d = await r.json()
+          var pct = 100; if (fill) fill.style.width = '100%'; if (pctText) pctText.textContent = '100%'
+          result.style.display = ''
+          result.innerHTML = '<div class="wc-disparo-result-msg ' + (d.failed === 0 ? 'success' : 'warning') + '"><strong>' + d.sent + '</strong> enviada(s), <strong>' + d.failed + '</strong> falha(s)</div>'
+        }
+      } catch (e) { result.style.display = ''; result.innerHTML = '<div class="wc-disparo-result-msg warning">Erro: ' + e.message + '</div>' }
+      btn.disabled = false; btn.textContent = 'Enviar Disparo'
+      return
+    }
+
     var contacts = getDisparoContacts();
     if (contacts.length === 0) { alert('Selecione pelo menos um contato'); return; }
     btn.disabled = true;
@@ -1238,17 +1368,12 @@ window.VeltrisWPP = (() => {
           var resp = await fetch(_wppServerUrl + '/send-message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chatId: targetChatId, text: personalized, sessionId: S._serverSessionId })
+            body: JSON.stringify({ chatId: targetChatId, text: personalized, mediaUrl: _selectedMedia?.mediaUrl || null, messageType: _selectedMedia?.ext === 'ogg' || _selectedMedia?.ext === 'mp3' ? 'audio' : 'image', sessionId: S._serverSessionId })
           });
           if (resp.ok) sent++; else failed++;
         } else {
-          var payload = {
-            chat_id: S.activeChatId || 'bulk',
-            session_id: S.activeSessionId,
-            text: personalized,
-            direction: 'sent',
-            status: 'queued',
-          };
+          var payload = { chat_id: S.activeChatId || 'bulk', session_id: S.activeSessionId, text: personalized, direction: 'sent', status: 'queued' };
+          if (_selectedMedia) { payload.media_url = _selectedMedia.mediaUrl; payload.message_type = _selectedMedia.ext === 'ogg' ? 'audio' : 'image' }
           var res = await apiPost('whatsapp_messages', payload);
           if (res) sent++; else failed++;
         }
@@ -2667,6 +2792,12 @@ window.VeltrisWPP = (() => {
     updateDisparoCount,
     toggleDispTagDrop,
     selectDispTag,
+    uploadSpreadsheet,
+    selectSpreadsheet,
+    deleteSpreadsheet,
+    toggleDispSheetDrop,
+    uploadMedia,
+    removeMedia,
     createTag,
     deleteTag,
     toggleLinkTagDrop,
