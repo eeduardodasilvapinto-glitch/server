@@ -563,8 +563,8 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/db-contacts') {
     const sid = url.searchParams.get('sessionId'); const companyId = url.searchParams.get('companyId') || (sid ? await getCompanyId(sid) : null)
-    // If no session, return only non-whatsapp contacts for the company
-    if (!sid) {
+    // If no session or session is disconnected, return only non-whatsapp contacts
+    if (!sid || !sessions.get(sid) || sessions.get(sid)?.status !== 'connected') {
       let q = supabase.from('contacts').select('id,name,phone,tags').neq('source', 'whatsapp')
       if (companyId) q = q.eq('company_id', companyId)
       const { data: all } = await q
@@ -585,7 +585,7 @@ const server = http.createServer(async (req, res) => {
     const filtered = (all || []).filter(c => {
       const np = normalizePhone(c.phone || '')
       if (c.source === 'whatsapp' && np && !chatPhones.has(np)) return false
-      return c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x')
+      return c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, ''))
     })
     const seen = {}; const final = []
     for (const c of filtered) { const np = normalizePhone(c.phone); if (np && !seen[np]) { seen[np] = true; final.push({ id: c.id, name: c.name, phone: c.phone, tags: c.tags }) } }
