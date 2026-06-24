@@ -1600,14 +1600,49 @@ window.VeltrisWPP = (() => {
               <th style="text-align:center">Excluir</th>
             </tr>
           </thead>
-          <tbody id="wcLeadsBody">${renderClientesRows(list)}</tbody>
+          <tbody id="wcLeadsBody">${renderClientesRows(list.slice(0, 15))}</tbody>
         </table>
-      </div>`;
+      </div>
+      <div id="wcLeadsPagination" style="display:flex;gap:4px;justify-content:center;padding:10px 0;flex-wrap:wrap"></div>`;
     // Hide checkboxes initially
     setTimeout(function() {
       var cbs2 = document.querySelectorAll('.wc-bulk-cb, #wcBulkAll')
       for (var i2 = 0; i2 < cbs2.length; i2++) cbs2[i2].style.visibility = 'hidden'
     }, 50)
+    renderLeadsPagination()
+  }
+
+  function renderLeadsPagination() {
+    var total = Array.isArray(S.leads) ? S.leads.length : 0
+    var perPage = 15
+    var pages = Math.ceil(total / perPage) || 1
+    var current = S._leadsPage || 1
+    var el = document.getElementById('wcLeadsPagination')
+    if (!el) return
+    if (pages <= 1) { el.innerHTML = ''; return }
+    var html = ''
+    if (current > 1) html += '<button class="btn btn-outline" style="font-size:0.7rem;padding:4px 10px" onclick="VeltrisWPP.goLeadsPage(' + (current - 1) + ')">‹</button>'
+    for (var p = 1; p <= pages; p++) {
+      if (p === current) html += '<button class="btn btn-save" style="font-size:0.7rem;padding:4px 10px;min-width:32px">' + p + '</button>'
+      else html += '<button class="btn btn-outline" style="font-size:0.7rem;padding:4px 10px;min-width:32px" onclick="VeltrisWPP.goLeadsPage(' + p + ')">' + p + '</button>'
+    }
+    if (current < pages) html += '<button class="btn btn-outline" style="font-size:0.7rem;padding:4px 10px" onclick="VeltrisWPP.goLeadsPage(' + (current + 1) + ')">›</button>'
+    el.innerHTML = html
+  }
+
+  function goLeadsPage(page) {
+    S._leadsPage = page
+    renderLeadsTable()
+  }
+
+  function renderLeadsTable() {
+    var data = S._filteredLeads || S.leads || []
+    var perPage = 15
+    var page = S._leadsPage || 1
+    var start = (page - 1) * perPage
+    var tbody = document.getElementById('wcLeadsBody')
+    if (tbody) tbody.innerHTML = renderClientesRows(data.slice(start, start + perPage))
+    renderLeadsPagination()
   }
 
   function getLastAction(contactId) {
@@ -1839,16 +1874,16 @@ window.VeltrisWPP = (() => {
   }
 
   function filterLeads() {
+    S._leadsPage = 1
     const search = (el('wcLeadSearch')?.value || '').toLowerCase();
     const stage = _wcStageValue;
     const list = Array.isArray(S.leads) ? S.leads : [];
-    const filtered = list.filter(l => {
+    S._filteredLeads = list.filter(l => {
       if (search && !(l.name || '').toLowerCase().includes(search) && !(l.phone || '').includes(search)) return false;
       if (stage && l.stage !== stage) return false;
       return true;
     });
-    const tbody = el('wcLeadsBody');
-    if (tbody) tbody.innerHTML = renderClientesRows(filtered);
+    renderLeadsTable()
   }
 
   function showAddLeadForm() {
@@ -2594,6 +2629,7 @@ window.VeltrisWPP = (() => {
     datePickerMonth,
     selectDatePickerDate,
     filterLeads,
+    goLeadsPage,
     showAddLeadForm,
     hideAddLeadForm,
     addLead,
