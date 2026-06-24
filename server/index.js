@@ -460,6 +460,43 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, removed })); return
   }
 
+  if (pathname === '/diagnose') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const entry = sessions.get(sid)
+    // Check pump
+    const pumpOk = !!entry?.outgoingInterval
+    const sockOk = !!entry?.sock
+    const statusOk = entry?.status === 'connected'
+    // Check recent messages
+    const { data: recentSent } = await supabase.from('whatsapp_messages').select('id,chat_id,direction,created_at').eq('session_id', sid).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 600000).toISOString()).order('created_at', { ascending: false }).limit(5)
+    const { data: recentOut } = await supabase.from('whatsapp_messages').select('id,chat_id,direction,created_at').eq('session_id', sid).eq('direction', 'outgoing').gte('created_at', new Date(Date.now() - 600000).toISOString()).order('created_at', { ascending: false }).limit(5)
+    const { data: recentFail } = await supabase.from('whatsapp_messages').select('id,chat_id,direction,created_at').eq('session_id', sid).eq('direction', 'failed').gte('created_at', new Date(Date.now() - 600000).toISOString()).order('created_at', { ascending: false }).limit(5)
+    // Check a sent message's chat JID
+    var sampleJid = null, sampleJidOk = false
+    if (recentOut?.length) {
+      const { data: chat } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', recentOut[0].chat_id).limit(1)
+      if (chat?.length) {
+        sampleJid = chat[0].remote_jid
+        const phone = sampleJid?.split('@')[0] || ''
+        const np = normalizePhone(phone)
+        sampleJidOk = np.length >= 11 && np.length <= 13
+      }
+    }
+    res.writeHead(200); res.end(JSON.stringify({
+      session: { id: sid, status: statusOk, hasSocket: sockOk, pumpRunning: pumpOk, phone: entry?.phone },
+      messages: { pendingSent: recentSent?.length || 0, outgoing: recentOut?.length || 0, failed: recentFail?.length || 0 },
+      sample: { lastOutgoingJid: sampleJid, jidValid: sampleJidOk },
+      issues: [
+        !statusOk ? 'Session not connected' : null,
+        !sockOk ? 'No Baileys socket' : null,
+        !pumpOk ? 'Pump not running' : null,
+        recentSent?.length > 0 ? recentSent.length + ' messages stuck as sent' : null,
+        sampleJid && !sampleJidOk ? 'JID format invalid: ' + sampleJid : null,
+      ].filter(Boolean)
+    })); return
+  }
+
   if (pathname === '/send-message' && req.method === 'POST') {
     let body = ''
     req.on('data', c => body += c)
