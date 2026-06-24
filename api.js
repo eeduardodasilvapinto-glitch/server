@@ -492,10 +492,10 @@
       var h = { 'Content-Type': 'application/json' };
       var sid = null;
       try { sid = window.VeltrisWPP && window.VeltrisWPP.getServerSessionId ? window.VeltrisWPP.getServerSessionId() : null; } catch (e) {}
-      var res = await fetch(RAILWAY_URL + '/api-proxy?sessionId=' + encodeURIComponent(sid || ''), {
+      var res = await fetch(RAILWAY_URL + '/manage-leads', {
         method: 'POST',
         headers: h,
-        body: JSON.stringify({ operation: 'manageLeads', table: 'contacts', params: { sessionId: sid }, body: body }),
+        body: JSON.stringify(Object.assign({}, body, { sessionId: sid })),
       });
       if (res.status === 401) { this.logout(); throw new Error('Sessão expirada'); }
       if (!res.ok) {
@@ -546,10 +546,10 @@
       var h = { 'Content-Type': 'application/json' };
       var sid = null;
       try { sid = window.VeltrisWPP && window.VeltrisWPP.getServerSessionId ? window.VeltrisWPP.getServerSessionId() : null; } catch (e) {}
-      var res = await fetch(RAILWAY_URL + '/api-proxy?sessionId=' + encodeURIComponent(sid || ''), {
+      var res = await fetch(RAILWAY_URL + '/manage-leads', {
         method: 'POST',
         headers: h,
-        body: JSON.stringify({ operation: 'manageLeads', table: 'contacts', params: { sessionId: sid }, body: body }),
+        body: JSON.stringify(Object.assign({}, body, { sessionId: sid })),
       });
       if (res.status === 401) { this.logout(); throw new Error('Sessão expirada'); }
       if (!res.ok) {
