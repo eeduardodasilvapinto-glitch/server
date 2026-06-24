@@ -1078,7 +1078,7 @@ window.VeltrisWPP = (() => {
     if (!contacts) contacts = await apiGet('contacts', {});
     _disparoContacts = Array.isArray(contacts) ? contacts.filter(c => c.phone) : [];
     var allContacts = Array.isArray(contacts) ? contacts : [];
-    loadSavedTags();
+    await loadTagsFromServer();
     var tags = [...new Set([..._savedTags, ...allContacts.flatMap(c => c.tags || [])])].sort();
     container.innerHTML = `
       <div class="wc-disparo-card">
@@ -1271,21 +1271,18 @@ window.VeltrisWPP = (() => {
   var _savedTags = [];
   var _linkTagValue = '';
 
-  function loadSavedTags() {
+  async function loadTagsFromServer() {
+    if (!S._serverSessionId) { _savedTags = []; return }
     try {
-      var data = localStorage.getItem('veltris_saved_tags');
-      _savedTags = data ? JSON.parse(data) : [];
-    } catch (e) { _savedTags = []; }
-  }
-
-  function saveSavedTags() {
-    try { localStorage.setItem('veltris_saved_tags', JSON.stringify(_savedTags)); } catch (e) {}
+      var r = await fetch(_wppServerUrl + '/list-tags?sessionId=' + encodeURIComponent(S._serverSessionId))
+      if (r.ok) { var d = await r.json(); _savedTags = d.tags || [] }
+    } catch (e) { _savedTags = [] }
   }
 
   async function renderTags() {
     const container = el('wppTags');
     if (!container) return;
-    loadSavedTags();
+    await loadTagsFromServer();
     var contacts;
     if (S._serverSessionId) {
       try {
@@ -1295,11 +1292,6 @@ window.VeltrisWPP = (() => {
     }
     if (!contacts || !contacts.length) contacts = await apiGet('contacts', {});
     _tagsContactList = Array.isArray(contacts) ? contacts : [];
-    var contactTags = [...new Set(_tagsContactList.flatMap(c => c.tags || []))];
-    contactTags.forEach(function(t) {
-      if (!_savedTags.includes(t)) _savedTags.push(t);
-    });
-    saveSavedTags();
     _savedTags.sort();
     container.innerHTML = `
       <div class="wc-tags-card">
@@ -1367,7 +1359,9 @@ window.VeltrisWPP = (() => {
     if (!_savedTags.includes(tag)) {
       _savedTags.push(tag);
       _savedTags.sort();
-      saveSavedTags();
+      if (S._serverSessionId) {
+        fetch(_wppServerUrl + '/create-tag', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag, sessionId: S._serverSessionId }) }).catch(function(){})
+      }
     }
     renderSavedTags();
     rebuildLinkTagDrop();
@@ -1376,7 +1370,6 @@ window.VeltrisWPP = (() => {
   function deleteTag(tag) {
     if (!confirm('Remover tag "' + tag + '"?')) return;
     _savedTags = _savedTags.filter(function(t) { return t !== tag; });
-    saveSavedTags();
     renderSavedTags();
     rebuildLinkTagDrop();
     _tagsContactList.forEach(function(c) {
@@ -1387,6 +1380,9 @@ window.VeltrisWPP = (() => {
         apiPatch('contacts', c.id, { tags: newTags });
       }
     });
+    if (S._serverSessionId) {
+      fetch(_wppServerUrl + '/delete-tag', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag, sessionId: S._serverSessionId }) }).catch(function(){})
+    }
   }
 
   function rebuildLinkTagDrop() {
