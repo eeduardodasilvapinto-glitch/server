@@ -56,6 +56,12 @@ window.VeltrisWPP = (() => {
     if (!n) return '?';
     return n.split(/\s+/).slice(0, 2).map(s => s[0]).join('').toUpperCase();
   }
+  function formatPhone(p) {
+    if (!p) return ''
+    var raw = String(p).replace(/^55(\d{2})/, '$1').replace(/[^\d]/g, '')
+    var fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
+    return fmt !== raw ? fmt : raw
+  }
   function stageColor(stage) {
     const colors = {
       agendado: '#3b82f6',
@@ -564,6 +570,7 @@ window.VeltrisWPP = (() => {
         <div class="wc-avatar">${initials(name)}</div>
         <div class="wc-chat-info">
           <div class="wc-chat-name">${escHtml(name)}</div>
+          <div class="wc-chat-phone">${escHtml(formatPhone(c.contact_phone || phone || ''))}</div>
           <div class="wc-chat-preview">${escHtml(lastMsg.substring(0, 60))}</div>
         </div>
         <div class="wc-chat-meta">
@@ -1763,19 +1770,22 @@ function renderDisparoContactList() {
     const container = el('wppClientes');
     if (!container) return;
     container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.85rem">Carregando contatos...</div>';
-    if (S._serverSessionId) {
-      try {
-        var resp = await fetch(_wppServerUrl + '/db-contacts?sessionId=' + encodeURIComponent(S._serverSessionId))
+    try {
+      var params = []
+      if (S._serverSessionId) params.push('sessionId=' + encodeURIComponent(S._serverSessionId))
+      else {
+        var compId = (typeof window._companyMode !== 'undefined' && window._companyMode) ? window._companyMode.id : null
+        if (compId) params.push('companyId=' + encodeURIComponent(compId))
+      }
+      if (params.length) {
+        var resp = await fetch(_wppServerUrl + '/db-contacts?' + params.join('&'))
         if (resp.ok) {
           var data = await resp.json()
           S.leads = data.contacts || []
-          console.log('renderClientes: loaded', S.leads.length, 'contacts')
-        } else {
-          console.warn('renderClientes: fetch failed', resp.status)
         }
-      } catch (e) { console.warn('renderClientes: error', e) }
-    }
-    if (!S.leads || !S.leads.length) { console.warn('renderClientes: fallback to apiGet'); S.leads = await apiGet('contacts', {}); }
+      }
+    } catch (e) { console.warn('renderClientes: error', e) }
+    if (!S.leads) S.leads = []
     const actionsData = await apiGet('cadence_actions', { order: 'scheduled_at.desc' });
     S.cadence_actions = Array.isArray(actionsData) ? actionsData : [];
     const list = Array.isArray(S.leads) ? S.leads : [];
@@ -1920,14 +1930,26 @@ function renderDisparoContactList() {
   }
 
   function renderClientesRows(leads) {
-    if (leads.length === 0) return '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px">Nenhum cliente encontrado</td></tr>';
+    if (leads.length === 0) return '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:30px">Nenhum cliente encontrado</td></tr>';
     return leads.map(l => {
       var lastAction = getLastAction(l.id);
       var isSelected = S._bulkSelected && S._bulkSelected[l.id]
+      var displayName = l.name
+      if (displayName && /^\d+$/.test(displayName.replace(/\D/g, ''))) {
+        var rawPhone = displayName.replace(/^55/, '')
+        var fmt = rawPhone.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
+        displayName = fmt !== rawPhone ? fmt : l.phone
+      }
+      var displayPhone = l.phone || ''
+      if (displayPhone) {
+        var rawP = displayPhone.replace(/^55/, '')
+        displayPhone = rawP.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3') || displayPhone
+      }
       return `
       <tr style="cursor:pointer;text-align:center" onclick="var bar=document.getElementById('wcBulkBar');if(bar&&bar.style.display!=='none'){var cb=this.querySelector('.wc-bulk-cb');if(cb){cb.checked=!cb.checked;VeltrisWPP.updateBulkCount()}}else{VeltrisWPP.selectLead('${l.id}')}">
         <td style="text-align:center"><input type="checkbox" class="wc-bulk-cb" data-id="${l.id}" ${isSelected?'checked':''} onchange="VeltrisWPP.updateBulkCount()" style="accent-color:var(--accent)" onclick="event.stopPropagation()" /></td>
-        <td style="text-align:center"><strong>${escHtml(shortName(l.name))}</strong></td>
+        <td style="text-align:center"><strong>${escHtml(shortName(displayName))}</strong></td>
+        <td style="text-align:center;color:var(--text-muted);font-size:0.75rem">${escHtml(displayPhone || '—')}</td>
         <td style="text-align:center"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${stageColor(l.stage)};margin-right:6px;vertical-align:middle"></span>${stageLabel(l.stage)}</td>
         <td style="text-align:center">${l.last_contacted_at ? formatFullDate(l.last_contacted_at) : '—'}</td>
         <td style="text-align:center">${lastAction ? formatFullDate(lastAction) : '—'}</td>
