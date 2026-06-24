@@ -524,8 +524,22 @@ const server = http.createServer(async (req, res) => {
         }
         const insertData = { chat_id: chatId, session_id: d.sessionId, text: d.text.substring(0, 500), direction: 'sent', created_at: new Date().toISOString() }
         if (d.mediaUrl) { insertData.media_url = d.mediaUrl; insertData.message_type = d.messageType || 'image' }
-        await supabase.from('whatsapp_messages').insert(insertData)
+        const insertResult = await supabase.from('whatsapp_messages').insert(insertData)
         trimMessages(chatId)
+        // Try direct send via Baileys socket
+        const sendEntry = sessions.get(d.sessionId)
+        if (sendEntry?.sock) {
+          try {
+            const { data: chatRow } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', chatId).limit(1)
+            if (chatRow?.length) {
+              await sendEntry.sock.sendMessage(chatRow[0].remote_jid, { text: d.text.substring(0, 500) })
+              await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', insertResult.data?.[0]?.id || insertData)
+              logger.info({ jid: chatRow[0].remote_jid }, 'Direct send OK')
+            }
+          } catch (sendErr) {
+            logger.error({ error: sendErr.message, jid: chatRow?.[0]?.remote_jid }, 'Direct send failed')
+          }
+        }
         res.writeHead(200); res.end(JSON.stringify({ ok: true }))
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
