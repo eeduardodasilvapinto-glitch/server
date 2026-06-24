@@ -671,15 +671,26 @@ const server = http.createServer(async (req, res) => {
         const ext = name?.endsWith('.xlsx') ? '.xlsx' : '.csv'
         const fp = path.join(companyDir, fileId + ext)
         // Parse rows
+        function extractRow(r) {
+          var entries = Object.entries(r)
+          var name = '', phone = ''
+          for (var i = 0; i < entries.length; i++) {
+            var k = entries[i][0].toLowerCase().replace(/[^a-z0-9]/g, '')
+            var v = (entries[i][1] || '').toString().trim()
+            if (k === 'nome' || k === 'name' || k === 'nomedocliente') name = v
+            else if (k === 'contato' || k === 'phone' || k === 'telefone' || k === 'celular' || k === 'numero' || k === 'numero') phone = v
+          }
+          return { name, phone: normalizePhone(phone) }
+        }
         let rows = []
         if (ext === '.csv') {
           const records = parse(content, { columns: true, skip_empty_lines: true, relax_column_count: true })
-          rows = records.map(r => ({ name: (r.nome || r.name || '').trim(), phone: normalizePhone(r.contato || r.phone || r.telefone || '') })).filter(r => r.phone && r.phone.length >= 10)
+          rows = records.map(extractRow).filter(r => r.phone && r.phone.length >= 10)
         } else {
           const wb = XLSX.read(content, { type: 'base64' })
           const ws = wb.Sheets[wb.SheetNames[0]]
           const data = XLSX.utils.sheet_to_json(ws)
-          rows = data.map(r => ({ name: (r.nome || r.name || '').toString().trim(), phone: normalizePhone((r.contato || r.phone || r.telefone || '').toString()) })).filter(r => r.phone && r.phone.length >= 10)
+          rows = data.map(extractRow).filter(r => r.phone && r.phone.length >= 10)
         }
         // Save metadata
         const meta = { fileId, name: name || fileId, ext, rowCount: rows.length, createdAt: new Date().toISOString() }
