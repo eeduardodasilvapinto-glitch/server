@@ -6,8 +6,8 @@
   var SUPABASE_ANON_KEY = 'sb_publishable_gsf7GLZd9jqL-r_MuQQcuw_g9CONjKt';
   // ──────────────────────────────────────────────────
 
-  var PROXY_ACTIVE = typeof window !== 'undefined' && window.location.origin && window.location.origin.indexOf('vercel.app') >= 0;
-  var FUNCTIONS_URL = PROXY_ACTIVE ? window.location.origin + '/api' : SUPABASE_URL + '/functions/v1';
+  var PROXY_ACTIVE = true;
+  var FUNCTIONS_URL = 'https://server-production-d7c0.up.railway.app';
   var REST_URL = SUPABASE_URL + '/rest/v1';
 
   var TOKEN_KEY = 'aureoon_token';
@@ -121,18 +121,16 @@
     // ── Generic REST helpers (via api-proxy Edge Function) ──
     _proxyCall: async function (operation, table, params, body) {
       if (window._supabaseBlocked) return { data: [] };
-      var h = {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
-      };
-      var t = this.token || (this._companyMemory && this._companyMemory.token) || localStorage.getItem(this.COMPANY_TOKEN_KEY) || sessionStorage.getItem(this.COMPANY_TOKEN_KEY);
-      if (t) h['x-company-auth'] = t;
-      var res = await fetch(FUNCTIONS_URL + '/api-proxy', {
+      var sid = null;
+      try { sid = window.VeltrisWPP && window.VeltrisWPP.getServerSessionId ? window.VeltrisWPP.getServerSessionId() : null; } catch (e) {}
+      var h = { 'Content-Type': 'application/json' };
+      var fetchUrl = FUNCTIONS_URL + '/api-proxy';
+      if (sid) fetchUrl += '?sessionId=' + encodeURIComponent(sid);
+      var res = await fetch(fetchUrl, {
         method: 'POST',
         headers: h,
-        body: JSON.stringify({ operation: operation, table: table, params: params, body: body }),
+        body: JSON.stringify({ operation: operation, table: table, params: Object.assign({}, params || {}, { sessionId: sid }), body: body }),
       });
-      if (res.status === 401) { this.logout(); throw new Error('Sessão expirada'); }
       if (!res.ok) {
         var err = await res.json().catch(function () { return { error: 'Erro no proxy' }; });
         throw new Error(err.error || 'Erro na requisição');
@@ -158,8 +156,9 @@
         }
       }
       var cid = this._getCompanyId();
-      if (cid && this._isCompanyScoped(table)) {
-        filters['company_id'] = cid;
+      if (this._isCompanyScoped(table)) {
+        if (!cid) return { data: [] };
+        filters['company_id'] = 'eq.' + cid; // Use PostgREST format
       }
       var proxyParams = { select: select, filters: filters };
       if (order) proxyParams.order = order;

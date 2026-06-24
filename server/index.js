@@ -538,6 +538,41 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, updated: total, company_id: targetCid })); return
   }
 
+  if (pathname === '/api-proxy' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { operation, table, params, body: reqBody } = JSON.parse(body)
+        const sid = params?.sessionId || url.searchParams.get('sessionId')
+        const companyId = sid ? await getCompanyId(sid) : null
+        const scoped = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
+        if (scoped.includes(table) && !companyId) { res.writeHead(200); res.end(JSON.stringify({ data: [] })); return }
+        if (!scoped.includes(table)) { const r = await supabase.from(table).select(); res.writeHead(200); res.end(JSON.stringify(r)); return }
+        if (operation === 'select') {
+          let q = supabase.from(table).select(params?.select || '*').eq('company_id', companyId)
+          if (params?.filters) for (const [k, v] of Object.entries(params.filters)) if (k !== 'company_id') q = q.eq(k, v)
+          if (params?.order) { const d = params.order.endsWith('.desc'); q = q.order(params.order.replace(/\.(desc|asc)$/, ''), { ascending: !d }) }
+          if (params?.limit) q = q.limit(parseInt(params.limit))
+          if (params?.offset) q = q.range(parseInt(params.offset), parseInt(params.offset) + (parseInt(params.limit) || 100) - 1)
+          const r = await q; res.writeHead(200); res.end(JSON.stringify(r))
+        } else if (operation === 'insert') {
+          const r = await supabase.from(table).insert(Object.assign({}, reqBody || {}, { company_id: companyId })).select()
+          res.writeHead(200); res.end(JSON.stringify(r))
+        } else if (operation === 'update') {
+          let q = supabase.from(table).update(reqBody || {}).eq('company_id', companyId)
+          if (params?.filters) for (const [k, v] of Object.entries(params.filters)) if (k !== 'company_id') q = q.eq(k, v)
+          await q; res.writeHead(200); res.end(JSON.stringify({ data: [] }))
+        } else if (operation === 'delete') {
+          let q = supabase.from(table).delete().eq('company_id', companyId)
+          if (params?.filters) for (const [k, v] of Object.entries(params.filters)) if (k !== 'company_id') q = q.eq(k, v)
+          await q; res.writeHead(200); res.end(JSON.stringify({ data: [] }))
+        } else { res.writeHead(400); res.end(JSON.stringify({ error: 'Unknown operation' })) }
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
   res.writeHead(404); res.end('Not found')
 })
 
