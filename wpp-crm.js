@@ -1248,7 +1248,7 @@ function renderDisparoContactList() {
       <label class="wc-disparo-item">
         <input type="checkbox" class="disp-contact-cb" value="${c.id}" onchange="VeltrisWPP.updateDisparoCount()" />
         <span class="wc-disparo-item-name">${escHtml(c.name || '—')}</span>
-        <span class="wc-disparo-item-phone">${escHtml(formatPhone(c.phone || \047\047))}</span>
+        <span class="wc-disparo-item-phone">${escHtml(formatPhone(c.phone || ''))}</span>
       </label>
     `).join('') || '<div class="wc-disparo-empty">Nenhum contato encontrado</div>';
   }
