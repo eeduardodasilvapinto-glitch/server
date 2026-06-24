@@ -231,7 +231,7 @@ async function startSession(sessionId, userId, companyId) {
         const phone = jid.split('@')[0]; if (normalizePhone(phone).length >= 14) continue
         const cn = nameMap[jid] || (typeof chat.name === 'string' ? chat.name : (typeof chat.notify === 'string' ? chat.notify : null)) || phone
         let cid = null; const exC = await findContactByPhone(phone, companyId)
-        if (exC) { cid = exC.id } else { const p = { name: cn, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }; if (companyId) p.company_id = companyId; const r = await supabase.from('contacts').insert(p).select().single(); if (r.data) cid = r.data.id }
+        if (exC) { cid = exC.id } else { const p = { name: cn, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }; if (companyId) p.company_id = companyId; const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.created_by = uEntry.userId; const r = await supabase.from('contacts').insert(p).select().single(); if (r.data) cid = r.data.id }
         const exChat = await findChat(jid, sessionId)
         if (!exChat) { const cp = { remote_jid: jid, contact_id: cid, contact_name: cn, last_message_at: chat.conversationTimestamp ? new Date(chat.conversationTimestamp * 1000).toISOString() : null, session_id: sessionId }; if (companyId) cp.company_id = companyId; await supabase.from('whatsapp_chats').insert(cp) }
       }
@@ -285,7 +285,7 @@ async function startSession(sessionId, userId, companyId) {
           }
         }
       }
-      else { const p = { name, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }; if (companyId) p.company_id = companyId; await supabase.from('contacts').insert(p) }
+      else { const p = { name, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }; if (companyId) p.company_id = companyId; const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.created_by = uEntry.userId; await supabase.from('contacts').insert(p) }
     }
   })
 
@@ -311,7 +311,7 @@ async function startSession(sessionId, userId, companyId) {
         const isMe = msg.key.fromMe
         let contactId = null; const exC = await findContactByPhone(phone, companyId)
         if (exC) { contactId = exC.id; await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', contactId) }
-        else { const p = { name: dn, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }; if (companyId) p.company_id = companyId; const r = await supabase.from('contacts').insert(p).select().single(); if (r.data) contactId = r.data.id }
+        else { const p = { name: dn, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }; if (companyId) p.company_id = companyId; const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.created_by = uEntry.userId; const r = await supabase.from('contacts').insert(p).select().single(); if (r.data) contactId = r.data.id }
         let chatId = null; const exCh = await findChat(jid, sessionId)
         if (exCh) {
           chatId = exCh.id; await supabase.from('whatsapp_chats').update({ remote_jid: jid, last_message: { text: txt.substring(0, 200), at: new Date().toISOString() }, last_message_at: new Date().toISOString(), unread_count: isMe ? (exCh.unread_count || 0) : (exCh.unread_count || 0) + 1, contact_name: dn }).eq('id', chatId)
@@ -360,6 +360,7 @@ async function syncContacts(sessionId, companyId) {
       } else {
         const p = { name, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }
         if (companyId) p.company_id = companyId
+        const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.created_by = uEntry.userId
         await supabase.from('contacts').insert(p)
       }
     }
@@ -498,8 +499,11 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/db-contacts') {
     const sid = url.searchParams.get('sessionId'); const companyId = sid ? await getCompanyId(sid) : null
-    let q = supabase.from('contacts').select('id,name,phone,tags')
+    const entry = sid ? sessions.get(sid) : null
+    let q = supabase.from('contacts').select('id,name,phone,tags,created_by')
     if (companyId) q = q.eq('company_id', companyId)
+    // Filter by created_by if the session has a userId
+    if (entry?.userId) q = q.eq('created_by', entry.userId)
     const { data: all } = await q
     const filtered = (all || []).filter(c => c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x'))
     const seen = {}; const final = []
@@ -1022,7 +1026,8 @@ const server = http.createServer(async (req, res) => {
           const { data: leads } = await q
           res.writeHead(200); res.end(JSON.stringify(leads || []))
         } else if (action === 'create') {
-          const r = await supabase.from('contacts').insert(Object.assign({}, data, { company_id: companyId, source: 'manual' })).select().single()
+          const uEntry = sessions.get(sessionId); const createdBy = uEntry?.userId || null
+          const r = await supabase.from('contacts').insert(Object.assign({}, data, { company_id: companyId, source: 'manual', created_by: createdBy })).select().single()
           res.writeHead(200); res.end(JSON.stringify(r.data || {}))
         } else if (action === 'update') {
           await supabase.from('contacts').update(data).eq('id', data.id).eq('company_id', companyId)
@@ -1265,7 +1270,10 @@ const server = http.createServer(async (req, res) => {
           if (params?.offset) q = q.range(parseInt(params.offset), parseInt(params.offset) + (parseInt(params.limit) || 100) - 1)
           const r = await q; res.writeHead(200); res.end(JSON.stringify(r))
         } else if (operation === 'insert') {
-          const r = await supabase.from(table).insert(Object.assign({}, reqBody || {}, { company_id: companyId })).select()
+          const uEntry = sid ? sessions.get(sid) : null
+          const insertBody = Object.assign({}, reqBody || {}, { company_id: companyId })
+          if (uEntry?.userId && table === 'contacts') insertBody.created_by = uEntry.userId
+          const r = await supabase.from(table).insert(insertBody).select()
           res.writeHead(200); res.end(JSON.stringify(r))
         } else if (operation === 'update') {
           let q = supabase.from(table).update(reqBody || {}).eq('company_id', companyId)
