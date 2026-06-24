@@ -658,7 +658,7 @@ window.VeltrisWPP = (() => {
       editBtn.className = 'wc-ai-btn wc-edit-btn';
       editBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
       editBtn.title = 'Editar nome do contato';
-      editBtn.onclick = function() { editContactName(S.activeChatId); };
+      editBtn.onclick = function() { VeltrisWPP.editContactName(S.activeChatId); };
       header.appendChild(editBtn);
     }
     if (header && !header.querySelector('.wc-info-btn')) {
@@ -760,48 +760,50 @@ window.VeltrisWPP = (() => {
   }
 
   function editContactName(chatId) {
-    var chat = S.chats.find(function(c) { return c.id === chatId })
-    if (!chat) return
-    var contact = S.contacts[chat.contact_id] || {}
-    var currentName = chat.contact_name || contact.name || ''
-    
-    var overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = '<div class="modal" style="max-width:360px;padding:24px">' +
-      '<h3 style="margin:0 0 16px;font-size:1rem"><i class="fi fi-rr-pencil"></i> Editar Nome</h3>' +
-      '<div class="settings-field"><label>Nome do contato</label><input type="text" id="wppEditNameInput" value="' + escHtml(currentName) + '" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:0.82rem;outline:none;font-family:inherit;box-sizing:border-box" /></div>' +
-      '<div style="display:flex;gap:8px;margin-top:16px">' +
-        '<button class="btn btn-primary" id="wppEditNameSave" style="flex:1">Salvar</button>' +
-        '<button class="btn btn-outline" onclick="this.closest(\'.modal-overlay\').remove()" style="flex:1">Cancelar</button>' +
-      '</div></div>';
-    document.body.appendChild(overlay);
-    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
-    
-    var input = document.getElementById('wppEditNameInput');
-    if (input) {
-      input.focus();
-      input.select();
-      input.onkeydown = function(e) { if (e.key === 'Enter') document.getElementById('wppEditNameSave').click(); };
-    }
-    
-    document.getElementById('wppEditNameSave').onclick = function() {
-      var newName = input.value.trim();
-      if (!newName || newName === currentName) { overlay.remove(); return; }
-      if (chat.contact_id) {
-        fetch(_wppServerUrl + '/manage-leads', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'update', data: { id: chat.contact_id, name: newName }, sessionId: S._serverSessionId })
-        }).catch(function(){});
+    try {
+      var chat = S.chats.find(function(c) { return c.id === chatId })
+      if (!chat) return
+      var contact = S.contacts[chat.contact_id] || {}
+      var currentName = chat.contact_name || contact.name || ''
+      
+      var overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = '<div class="modal" style="max-width:360px;padding:24px">' +
+        '<h3 style="margin:0 0 16px;font-size:1rem"><i class="fi fi-rr-pencil"></i> Editar Nome</h3>' +
+        '<div class="settings-field"><label>Nome do contato</label><input type="text" id="wppEditNameInput" value="' + escHtml(currentName) + '" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:0.82rem;outline:none;font-family:inherit;box-sizing:border-box" /></div>' +
+        '<div style="display:flex;gap:8px;margin-top:16px">' +
+          '<button class="btn btn-primary" id="wppEditNameSave" style="flex:1">Salvar</button>' +
+          '<button class="btn btn-outline" onclick="this.closest(\'.modal-overlay\').remove()" style="flex:1">Cancelar</button>' +
+        '</div></div>';
+      document.body.appendChild(overlay);
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+      
+      var input = document.getElementById('wppEditNameInput');
+      if (input) {
+        input.focus();
+        input.select();
+        input.onkeydown = function(e) { if (e.key === 'Enter') var btn = document.getElementById('wppEditNameSave'); if (btn) btn.click(); };
       }
-      chat.contact_name = newName;
-      if (contact) contact.name = newName;
-      var nameEl = el('wcChatName');
-      if (nameEl) nameEl.textContent = newName;
-      loadChats();
-      renderClientes();
-      renderChatList();
-      overlay.remove();
-    };
+      
+      document.getElementById('wppEditNameSave').onclick = function() {
+        var newName = input.value.trim();
+        if (!newName || newName === currentName) { overlay.remove(); return; }
+        if (chat.contact_id) {
+          fetch(_wppServerUrl + '/manage-leads', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'update', data: { id: chat.contact_id, name: newName }, sessionId: S._serverSessionId })
+          }).catch(function(){});
+        }
+        chat.contact_name = newName;
+        if (contact) contact.name = newName;
+        var nameEl = el('wcChatName');
+        if (nameEl) nameEl.textContent = newName;
+        loadChats();
+        renderClientes();
+        renderChatList();
+        overlay.remove();
+      };
+    } catch (e) { console.error('editContactName error:', e); }
   }
 
   function showContactInfo(chatId) {
