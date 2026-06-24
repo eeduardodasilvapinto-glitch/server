@@ -11672,11 +11672,11 @@
                 });
             }
 
-            function openSettings() { var el = document.getElementById('settingsOverlay'); el.style.display = ''; el.classList.add('visible'); try { loadSettings(); } catch(e) { console.warn('loadSettings error', e) } }
+            function openSettings() { var el = document.getElementById('settingsOverlay'); if (!el) return; el.style.display = 'flex'; el.classList.add('visible'); try { loadSettings(); } catch(e) { console.warn('loadSettings error', e) } }
             function closeSettings() {
-                var el = document.getElementById('settingsOverlay');
+                var el = document.getElementById('settingsOverlay'); if (!el) return;
+                el.style.display = 'none';
                 el.classList.remove('visible');
-                el.style.display = '';
                 if (_lastTab) switchTab(_lastTab);
             }
             function toggleCollapsible(id) {
