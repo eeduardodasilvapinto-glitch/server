@@ -544,8 +544,12 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const { action, data, sessionId } = JSON.parse(body)
-        const companyId = sessionId ? await getCompanyId(sessionId) : null
-        if (!companyId) { res.writeHead(200); res.end(JSON.stringify([])); return }
+        if (!sessionId) { res.writeHead(200); res.end(JSON.stringify([])); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify([])); return }
+        // Verify session is actually connected
+        const entry = sessions.get(sessionId)
+        if (!entry || entry.status !== 'connected') { res.writeHead(200); res.end(JSON.stringify([])); return }
         if (action === 'list') {
           const { data: leads } = await supabase.from('contacts').select('*').eq('company_id', companyId)
           res.writeHead(200); res.end(JSON.stringify(leads || []))
@@ -572,9 +576,10 @@ const server = http.createServer(async (req, res) => {
         const { operation, table, params, body: reqBody } = JSON.parse(body)
         const sid = params?.sessionId || url.searchParams.get('sessionId')
         const companyId = sid ? await getCompanyId(sid) : null
+        const isConnected = sid && sessions.get(sid)?.status === 'connected'
         logger.info('Proxy: ' + operation + ' ' + table + ' sid=' + (sid || 'null') + ' cid=' + (companyId || 'null') + ' filters=' + JSON.stringify(params?.filters || {}))
         const scoped = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
-        if (scoped.includes(table) && !companyId) { res.writeHead(200); res.end(JSON.stringify({ data: [] })); return }
+        if (scoped.includes(table) && (!companyId || companyId === 'NO_COMPANY' || !isConnected)) { res.writeHead(200); res.end(JSON.stringify({ data: [] })); return }
         if (operation === 'select') {
           let q = supabase.from(table).select(params?.select || '*')
           if (scoped.includes(table)) q = q.eq('company_id', companyId)
