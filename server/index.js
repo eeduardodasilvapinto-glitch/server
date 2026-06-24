@@ -683,9 +683,8 @@ const server = http.createServer(async (req, res) => {
             if (k === 'nome' || k === 'name' || k === 'nomedocliente' || k === 'cliente' || k === 'contato' && !phone) name = v
             else if (k === 'contato' || k === 'phone' || k === 'telefone' || k === 'celular' || k === 'numero' || k === 'whatsapp' || k === 'tel' || k === 'fone' || k === 'movel') phone = v
           }
-          // Fallback: try to detect columns by content
           if (!phone && entries.length <= 3) {
-            var phoneCandidates = entries.filter(function(e) { var np = normalizePhone(String(e[1] ?? '')); return np && np.length >= 10 })
+            var phoneCandidates = entries.filter(function(e) { var np = normalizePhone(String(e[1] ?? '')); return np && np.length >= 8 })
             if (phoneCandidates.length === 1) {
               phone = String(phoneCandidates[0][1] ?? '')
               if (!name) name = String(entries.filter(function(e) { return e[0] !== phoneCandidates[0][0] })[0]?.[1] ?? '')
@@ -696,12 +695,14 @@ const server = http.createServer(async (req, res) => {
         let rows = []
         if (ext === '.csv') {
           const records = parse(content, { columns: true, skip_empty_lines: true, relax_column_count: true })
-          rows = records.map(extractRow).filter(r => r.phone && r.phone.length >= 10)
+          rows = records.map(extractRow).filter(r => r.phone && r.phone.length >= 8)
+          if (rows.length < records.length) logger.info({ sessionId, total: records.length, valid: rows.length }, 'Spreadsheet row filter')
         } else {
           const wb = XLSX.read(content, { type: 'base64' })
           const ws = wb.Sheets[wb.SheetNames[0]]
           const data = XLSX.utils.sheet_to_json(ws)
-          rows = data.map(extractRow).filter(r => r.phone && r.phone.length >= 10)
+          rows = data.map(extractRow).filter(r => r.phone && r.phone.length >= 8)
+          if (rows.length < data.length) logger.info({ sessionId, total: data.length, valid: rows.length }, 'XLSX row filter')
         }
         // Save metadata
         const meta = { fileId, name: name || fileId, ext, rowCount: rows.length, createdAt: new Date().toISOString() }
