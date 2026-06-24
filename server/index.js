@@ -948,6 +948,114 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, updated })); return
   }
 
+  if (pathname === '/cleanup-all') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const companyId = await getCompanyId(sid)
+    if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ error: 'No company' })); return }
+    const results = {}
+    try {
+      // 1. Remove LIDs
+      let q = supabase.from('contacts').select('id,name,phone')
+      if (companyId) q = q.eq('company_id', companyId)
+      const { data: allContacts } = await q
+      const lids = (allContacts || []).filter(c => { const p = normalizePhone(c.phone || ''); return p.length >= 14 })
+      if (lids.length) await supabase.from('contacts').delete().in('id', lids.map(c => c.id))
+      results.lidsRemoved = lids.length
+    } catch (e) { results.lidsError = e.message }
+    try {
+      // 2. Deduplicate messages (keep first by created_at)
+      const { data: allC } = await supabase.from('whatsapp_chats').select('id').in('session_id', [sid])
+      let removed = 0
+      if (allC) for (const ch of allC) {
+        const { data: msgs } = await supabase.from('whatsapp_messages').select('id,text,created_at').eq('chat_id', ch.id).order('created_at', { ascending: true })
+        if (!msgs?.length) continue
+        const seen = {}
+        for (const m of msgs) {
+          const key = (m.text || '').substring(0, 100)
+          if (seen[key]) { await supabase.from('whatsapp_messages').delete().eq('id', m.id); removed++ }
+          else seen[key] = true
+        }
+      }
+      results.msgsDeduplicated = removed
+    } catch (e) { results.msgsError = e.message }
+    try {
+      // 3. Fix contact names from DB contacts
+      const { data: companySessions } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', companyId)
+      const sids = [sid, ...(companySessions || []).map(s => s.id).filter(id => id !== sid)]
+      const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name').in('session_id', sids)
+      const { data: contacts } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId)
+      const byNp = {}
+      if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); if (np && c.name && !/^\d+$/.test(c.name)) byNp[np] = c.name }
+      let fixed = 0
+      if (chats) for (const ch of chats) {
+        const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+        if (np && byNp[np] && byNp[np] !== ch.contact_name) {
+          await supabase.from('whatsapp_chats').update({ contact_name: byNp[np] }).eq('id', ch.id); fixed++
+        }
+      }
+      results.contactNamesFixed = fixed
+    } catch (e) { results.contactNamesError = e.message }
+    try {
+      // 4. Fix JIDs
+      const { data: chats2 } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id').in('session_id', sids)
+      const { data: contacts2 } = await supabase.from('contacts').select('id,phone')
+      const phoneById = {}
+      if (contacts2) for (const c of contacts2) phoneById[c.id] = c.phone
+      let jidFixed = 0
+      if (chats2) for (const ch of chats2) {
+        var contactPhone = ch.contact_id ? phoneById[ch.contact_id] : null
+        if (contactPhone) {
+          var np = normalizePhone(contactPhone)
+          var correctJid = '55' + np + '@s.whatsapp.net'
+          if (ch.remote_jid !== correctJid) { await supabase.from('whatsapp_chats').update({ remote_jid: correctJid }).eq('id', ch.id); jidFixed++ }
+        } else {
+          var part = ch.remote_jid?.split('@')[0] || ''
+          var np2 = normalizePhone(part)
+          if (np2 && np2.length >= 10 && ch.remote_jid !== '55' + np2 + '@s.whatsapp.net') {
+            await supabase.from('whatsapp_chats').update({ remote_jid: '55' + np2 + '@s.whatsapp.net' }).eq('id', ch.id); jidFixed++
+          }
+        }
+      }
+      results.jidsFixed = jidFixed
+    } catch (e) { results.jidsError = e.message }
+    try {
+      // 5. Deduplicate contacts
+      const { data: all3 } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId).order('created_at', { ascending: true })
+      const seen = {}; const toDelete = []
+      if (all3) for (const c of all3) { const key = normalizePhone(c.phone) + '|' + ((c.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')); if (seen[key]) toDelete.push(c.id); else seen[key] = true }
+      if (toDelete.length) await supabase.from('contacts').delete().in('id', toDelete)
+      results.contactsDeduplicated = toDelete.length
+    } catch (e) { results.contactsError = e.message }
+    try {
+      // 6. Migrate created_by for existing contacts
+      const { data: sessionsList } = await supabase.from('whatsapp_sessions').select('id,user_id').eq('company_id', companyId)
+      const userIdBySession = {}
+      if (sessionsList) for (const s of sessionsList) userIdBySession[s.id] = s.user_id
+      const { data: chats3 } = await supabase.from('whatsapp_chats').select('id,remote_jid,session_id').in('session_id', sids)
+      const { data: contacts3 } = await supabase.from('contacts').select('id,phone,notes').eq('company_id', companyId)
+      const contactByNp = {}
+      if (contacts3) for (const c of contacts3) { const np = normalizePhone(c.phone || ''); if (np) contactByNp[np] = c }
+      let migrated = 0
+      if (chats3) for (const ch of chats3) {
+        const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+        if (!np || !contactByNp[np]) continue
+        const ct = contactByNp[np]
+        let hasCreator = false
+        try { var n = typeof ct.notes === 'string' ? JSON.parse(ct.notes) : (ct.notes || {}); if (n.created_by) hasCreator = true } catch(e) {}
+        if (hasCreator) continue
+        const uid = userIdBySession[ch.session_id]
+        if (uid) {
+          const oldNotes = ct.notes ? (typeof ct.notes === 'string' ? (() => { try { return JSON.parse(ct.notes) } catch(e) { return { _: ct.notes } } })() : ct.notes) : {}
+          oldNotes.created_by = uid
+          await supabase.from('contacts').update({ notes: JSON.stringify(oldNotes) }).eq('id', ct.id); migrated++
+        }
+      }
+      results.createdByMigrated = migrated
+    } catch (e) { results.createdByError = e.message }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, results })); return
+  }
+
   if (pathname === '/list-tags') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(200); res.end(JSON.stringify({ tags: [] })); return }
