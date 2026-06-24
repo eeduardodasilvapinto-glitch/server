@@ -193,7 +193,6 @@
         filters[k] = val;
       }
       var cid = this._getCompanyId();
-      if (this._isCompanyScoped(table) && !cid) return;
       if (cid && this._isCompanyScoped(table)) {
         filters['company_id'] = cid;
       }
@@ -212,7 +211,6 @@
         filters[k] = val;
       }
       var cid = this._getCompanyId();
-      if (this._isCompanyScoped(table) && !cid) return;
       if (cid && this._isCompanyScoped(table)) {
         filters['company_id'] = cid;
       }
