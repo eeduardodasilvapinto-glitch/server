@@ -767,7 +767,7 @@ window.VeltrisWPP = (() => {
       var currentName = chat.contact_name || contact.name || ''
       
       var overlay = document.createElement('div');
-      overlay.className = 'modal-overlay';
+      overlay.className = 'modal-overlay visible';
       overlay.innerHTML = '<div class="modal" style="max-width:360px;padding:24px">' +
         '<h3 style="margin:0 0 16px;font-size:1rem"><i class="fi fi-rr-pencil"></i> Editar Nome</h3>' +
         '<div class="settings-field"><label>Nome do contato</label><input type="text" id="wppEditNameInput" value="' + escHtml(currentName) + '" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:0.82rem;outline:none;font-family:inherit;box-sizing:border-box" /></div>' +
