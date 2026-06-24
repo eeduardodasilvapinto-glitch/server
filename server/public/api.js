@@ -161,7 +161,7 @@
       var cid = this._getCompanyId();
       if (this._isCompanyScoped(table)) {
         if (!cid) return { data: [] };
-        filters['company_id'] = 'eq.' + cid; // Use PostgREST format
+        filters['company_id'] = cid;
       }
       var proxyParams = { select: select, filters: filters };
       if (order) proxyParams.order = order;
