@@ -1660,10 +1660,13 @@ window.VeltrisWPP = (() => {
         <td style="text-align:center">${escHtml(l.phone || '—')}</td>
         <td style="text-align:center"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${stageColor(l.stage)};margin-right:6px;vertical-align:middle"></span>${stageLabel(l.stage)}</td>
         <td style="text-align:center">${l.last_contacted_at ? formatFullDate(l.last_contacted_at) : '—'}</td>
-        <td style="text-align:center">${lastAction ? formatFullDate(lastAction) : '—'}<button class="btn btn-outline" style="font-size:0.7rem;padding:2px 6px;margin-left:4px;border-radius:4px;vertical-align:middle" onclick="event.stopPropagation();VeltrisWPP.editLead('${l.id}')" title="Editar cliente"><i class="fi fi-rr-pencil"></i></button></td>
+        <td style="text-align:center">${lastAction ? formatFullDate(lastAction) : '—'}</td>
         <td style="text-align:center">${(l.tags||[]).map(function(t){return '<span class="wc-tag" style="background:hsla(var(--accent-h),var(--accent-s),55%,0.12);color:var(--accent);font-size:0.55rem;padding:1px 5px;margin:1px;display:inline-block;border-radius:4px">'+escHtml(t)+'</span>'}).join('')||'—'}</td>
         <td style="text-align:center"><button class="btn btn-outline" style="font-size:0.85rem;padding:4px 10px;border-radius:9999px" onclick="event.stopPropagation();VeltrisWPP.openWhatsAppChat('${l.phone}')" title="WhatsApp"><i class="fi fi-rr-comment-alt"></i></button></td>
-        <td style="text-align:center"><button class="btn btn-outline" style="font-size:0.85rem;padding:4px 10px;border-radius:9999px;color:var(--red)" onclick="event.stopPropagation();VeltrisWPP.deleteLead('${l.id}')" title="Excluir"><i class="fi fi-rr-trash"></i></button></td>
+        <td style="text-align:center;white-space:nowrap">
+          <button class="btn btn-outline" style="font-size:0.85rem;padding:4px 8px;border-radius:9999px" onclick="event.stopPropagation();VeltrisWPP.editLead('${l.id}')" title="Editar"><i class="fi fi-rr-pencil"></i></button>
+          <button class="btn btn-outline" style="font-size:0.85rem;padding:4px 8px;border-radius:9999px;color:var(--red)" onclick="event.stopPropagation();VeltrisWPP.deleteLead('${l.id}')" title="Excluir"><i class="fi fi-rr-trash"></i></button>
+        </td>
       </tr>
     `}).join('');
   }
