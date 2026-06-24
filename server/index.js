@@ -27,7 +27,8 @@ if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true })
 if (!fs.existsSync(SPREADSHEETS_DIR)) fs.mkdirSync(SPREADSHEETS_DIR, { recursive: true })
 
 const sessions = new Map()
-let msgUpsertCount = 0, msgSkippedNoMsg = 0, msgSkippedGroup = 0, msgSkippedLid = 0, msgSkippedNoText = 0, msgProcessed = 0
+let msgUpsertCount = 0, msgSkippedNoMsg = 0, msgSkippedGroup = 0, msgSkippedLid = 0, msgSkippedNoText = 0, msgProcessed = 0, msgTypesSeen = ''
+let msgJidsReceived = ''
 
 function normalizePhone(raw) {
   if (!raw) return ''
@@ -260,7 +261,7 @@ async function startSession(sessionId, userId, companyId) {
         if (msg.message?.audioMessage) { mType = 'audio'; try { const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) }); if (buf) { const fn = sessionId + '_' + msg.key.id + '.ogg'; fs.writeFileSync(path.join(MEDIA_DIR, fn), buf); mediaUrl = '/media/' + fn } } catch (e) {} }
         if (msg.message?.imageMessage) { mType = 'image'; try { const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) }); if (buf) { const fn = sessionId + '_' + msg.key.id + '.jpg'; fs.writeFileSync(path.join(MEDIA_DIR, fn), buf); mediaUrl = '/media/' + fn } } catch (e) {} }
         const txt = mType === 'audio' ? 'Audio' : mType === 'image' ? 'Foto' : msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || ''
-        if (!txt && !mediaUrl) { msgSkippedNoText++; continue }
+        if (!txt && !mediaUrl) { msgSkippedNoText++; const msgKeys = Object.keys(msg.message || {}); if (msgTypesSeen.length < 500) msgTypesSeen += (msgTypesSeen ? ',' : '') + msgKeys.join('|'); if (msgJidsReceived.length < 500) msgJidsReceived += (msgJidsReceived ? ',' : '') + jid; continue }
         const phone = jid.split('@')[0]
         if (normalizePhone(phone).length >= 14) continue
         const pn = msg.pushName || phone; const labelN = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho']
@@ -373,7 +374,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/msg-stats') {
-    res.writeHead(200); res.end(JSON.stringify({ msgUpsertCount, msgSkippedNoMsg, msgSkippedGroup, msgSkippedLid, msgSkippedNoText, msgProcessed })); return
+    res.writeHead(200); res.end(JSON.stringify({ msgUpsertCount, msgSkippedNoMsg, msgSkippedGroup, msgSkippedLid, msgSkippedNoText, msgProcessed, msgTypesSeen: msgTypesSeen.slice(0,500), msgJidsReceived: msgJidsReceived.slice(0,500) })); return
   }
 
   if (pathname === '/contacts') {
