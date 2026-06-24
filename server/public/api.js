@@ -8,7 +8,8 @@
 
   var PROXY_ACTIVE = typeof window !== 'undefined' && window.location.origin && window.location.origin.indexOf('vercel.app') >= 0;
   var VERCEL_API = window.location.origin + '/api';
-  var FUNCTIONS_URL = PROXY_ACTIVE ? VERCEL_API : SUPABASE_URL + '/functions/v1';
+  var SUPABASE_API = SUPABASE_URL + '/functions/v1';
+  var FUNCTIONS_URL = PROXY_ACTIVE ? VERCEL_API : SUPABASE_API;
   var RAILWAY_URL = 'https://server-production-d7c0.up.railway.app';
   var REST_URL = SUPABASE_URL + '/rest/v1';
 
