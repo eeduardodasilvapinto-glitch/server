@@ -1128,7 +1128,7 @@ window.VeltrisWPP = (() => {
                 </div>
               </div>
             </div>
-            <div id="dispSheetInfo" style="font-size:0.75rem;color:var(--text-muted);padding:6px 0"></div>
+            <div id="dispSheetInfo" style="font-size:0.75rem;color:var(--text-muted);padding:6px 0">${_selectedSpreadsheet ? '<span class="wc-tag" style="background:rgba(34,197,94,0.12);color:rgb(34,197,94)"><i class="fi fi-rr-check-circle"></i> ' + escHtml(_selectedSpreadsheet.name) + ' (' + _selectedSpreadsheet.rowCount + ' contatos)</span>' : ''}</div>
           </div>
         </div>
         <div class="wc-disparo-section">
@@ -1258,9 +1258,19 @@ window.VeltrisWPP = (() => {
         if (r.ok) {
           var d = await r.json()
           _selectedSpreadsheet = { fileId: d.fileId, name: d.name, rowCount: d.rowCount }
-          el('dispSheetInfo').textContent = 'Planilha: ' + d.name + ' (' + d.rowCount + ' contatos)'
+          var info = el('dispSheetInfo')
+          if (info) info.innerHTML = '<span class="wc-tag" style="background:rgba(34,197,94,0.12);color:rgb(34,197,94)"><i class="fi fi-rr-check-circle"></i> ' + escHtml(d.name) + ' (' + d.rowCount + ' contatos)</span>'
           updateDisparoCount()
-          renderDisparos()
+          // Rebuild saved list dropdown
+          try {
+            var sr = await fetch(_wppServerUrl + '/list-spreadsheets?sessionId=' + encodeURIComponent(S._serverSessionId))
+            if (sr.ok) { var sd = await sr.json(); var sheets = sd.files || []
+              var drop = el('dispSheetDrop')
+              if (drop) drop.innerHTML = '<div class="cs-opt" data-value="" onclick="VeltrisWPP.selectSpreadsheet(\'\')">Nenhuma</div>' + sheets.map(function(s) {
+                return '<div class="cs-opt" style="display:flex;justify-content:space-between" data-value="' + s.fileId + '" onclick="VeltrisWPP.selectSpreadsheet(\'' + s.fileId + '\',\'' + escHtml(s.name) + '\', ' + s.rowCount + ')"><span>' + escHtml(s.name) + ' (' + s.rowCount + ')</span><span style="color:var(--red);cursor:pointer" onclick="event.stopPropagation();VeltrisWPP.deleteSpreadsheet(\'' + s.fileId + '\')">&times;</span></div>'
+              }).join('')
+            }
+          } catch (e) {}
         }
       } catch (e) { alert('Erro ao enviar planilha: ' + e.message) }
     }
