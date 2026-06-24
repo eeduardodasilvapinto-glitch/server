@@ -852,6 +852,76 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (pathname === '/add-webhook-column') {
+    try {
+      const { error } = await supabase.rpc('exec_sql', { sql: "ALTER TABLE companies ADD COLUMN IF NOT EXISTS webhook_code TEXT;" })
+      if (error) throw error
+      res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+    } catch (e) {
+      res.writeHead(200); res.end(JSON.stringify({ ok: false, error: e.message }))
+    }
+    return
+  }
+
+  if (pathname === '/get-webhook-code' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId } = JSON.parse(body)
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ error: 'No company' })); return }
+        // Check if company has a webhook_code, if not generate one
+        const { data: company } = await supabase.from('companies').select('webhook_code,name').eq('id', companyId).limit(1)
+        if (company?.[0]?.webhook_code) {
+          res.writeHead(200); res.end(JSON.stringify({ company_code: company[0].webhook_code, company_id: companyId }))
+        } else {
+          const code = companyId.split('-')[0] + '-' + Math.random().toString(36).slice(2, 8).toUpperCase()
+          await supabase.from('companies').update({ webhook_code: code }).eq('id', companyId)
+          res.writeHead(200); res.end(JSON.stringify({ company_code: code, company_id: companyId }))
+        }
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/webhook-lead' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const d = JSON.parse(body)
+        const companyCode = d.company_code || d.code || ''
+        const companyId = d.company_id || ''
+        let cid = null
+        if (companyId) {
+          cid = companyId
+        } else if (companyCode) {
+          const { data: company } = await supabase.from('companies').select('id').eq('webhook_code', companyCode).limit(1)
+          if (company?.[0]) cid = company[0].id
+        }
+        if (!cid) { res.writeHead(200); res.end(JSON.stringify({ error: 'Invalid company' })); return }
+        const insertData = {
+          name: d.name || d.nome || '',
+          phone: normalizePhone(d.phone || d.telefone || d.celular || d.whatsapp || d.contato || d.tel || ''),
+          email: d.email || d.mail || '',
+          source: d.source || 'webhook',
+          stage: d.stage || 'novo',
+          score: 0,
+          company_id: cid,
+          campaign: d.campaign || d.campanha || '',
+          description: d.description || d.descricao || d.msg || d.mensagem || '',
+          project_value: d.project_value || d.valor || null,
+          notes: d.notes || d.obs || ''
+        }
+        const r = await supabase.from('contacts').insert(insertData).select().single()
+        if (r.error) { res.writeHead(500); res.end(JSON.stringify({ error: r.error.message })); return }
+        res.writeHead(201); res.end(JSON.stringify({ ok: true, id: r.data?.id }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
   if (pathname === '/manage-leads' && req.method === 'POST') {
     let body = ''
     req.on('data', c => body += c)

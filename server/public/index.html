@@ -8455,28 +8455,27 @@
                     <div class="crm-modal-box">
                         <h3><i class="fi fi-rr-link"></i> Webhook de Leads</h3>
                         <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px">
-                            Configure Google Ads e Meta Ads para enviar leads para esta URL:
+                            Envie leads do seu formulário ou landing page para esta URL:
                         </p>
                         <div class="uf-group">
-                            <label>Webhook URL</label>
-                            <input type="text" id="webhookUrl" readonly
-                                value="crm-webhook (clique para copiar)"
-                                onclick="var real='https://dwkjynmelculfzumoreg.supabase.co/functions/v1/crm-webhook';navigator.clipboard.writeText(real).then(function(){showToast('URL copiada!')}).catch(function(){})" />
+                            <label>URL do Webhook (Railway)</label>
+                            <input type="text" id="railwayWebhookUrl" readonly
+                                value="https://server-production-d7c0.up.railway.app/webhook-lead"
+                                onclick="navigator.clipboard.writeText(this.value);showToast('URL copiada!')" />
                         </div>
                         <div class="uf-group">
-                            <label>Secret (header: <code>x-crm-secret</code>)</label>
-                            <input type="password" id="webhookSecret" readonly value="16A17B32C45D"
-                                onclick="this.type='text';this.select();navigator.clipboard.writeText(this.value);showToast('Secret copiado!');setTimeout(function(){document.getElementById('webhookSecret').type='password'},3000)" />
-                                onclick="this.type='text';this.select();navigator.clipboard.writeText(this.value);showToast('Secret copiado!');setTimeout(function(){document.getElementById('webhookSecret').type='password'},3000)" />
+                            <label>Código da Empresa</label>
+                            <input type="text" id="webhookCompanyCode" readonly
+                                value="carregando..."
+                                onclick="navigator.clipboard.writeText(this.value);showToast('Código copiado!')" />
                         </div>
                         <div class="uf-group">
-                            <label>Formato do JSON</label>
-                            <textarea readonly style="font-size:0.7rem;font-family:monospace;min-height:120px">{
+                            <label>Formato do JSON (enviar via POST)</label>
+                            <textarea readonly id="webhookJsonExample" style="font-size:0.7rem;font-family:monospace;min-height:140px">{
+        "company_code": "SEU_CODIGO_AQUI",
         "name": "Nome do Lead",
-        "phone": "(11) 99999-9999",
+        "phone": "51999999999",
         "email": "lead@email.com",
-        "project_value": 5000.00,
-        "description": "Descrição do projeto",
         "source": "google",
         "campaign": "Nome da Campanha"
     }</textarea>
@@ -14262,6 +14261,27 @@
 
             function openWebhookInfo() {
                 document.getElementById('webhookModal').classList.add('open');
+                var sid = null;
+                try { sid = window.VeltrisWPP && window.VeltrisWPP.getServerSessionId(); } catch (e) {}
+                if (sid) {
+                    fetch('https://server-production-d7c0.up.railway.app/get-webhook-code', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sessionId: sid })
+                    }).then(function(r){ return r.json() }).then(function(d){
+                        if (d.company_code) {
+                            document.getElementById('webhookCompanyCode').value = d.company_code;
+                            document.getElementById('webhookJsonExample').value = JSON.stringify({
+                                company_code: d.company_code,
+                                name: 'Nome do Lead',
+                                phone: '51999999999',
+                                email: 'lead@email.com',
+                                source: 'google',
+                                campaign: 'Nome da Campanha'
+                            }, null, 2);
+                        }
+                    }).catch(function(){})
+                }
             }
 
             // ── CRM Bulk Edit ──
