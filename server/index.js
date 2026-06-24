@@ -381,7 +381,10 @@ const server = http.createServer(async (req, res) => {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
     const cid = await getCompanyId(sid)
-    const { data: wa } = await supabase.from('whatsapp_chats').select('*').eq('session_id', sid).order('last_message_at', { ascending: false, nullsLast: true })
+    // Get ALL session IDs for this company
+    const { data: companySessions } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', cid)
+    const sessionIds = [sid, ...(companySessions || []).map(function(s){ return s.id }).filter(function(id){ return id !== sid })]
+    const { data: wa } = await supabase.from('whatsapp_chats').select('*').in('session_id', sessionIds).order('last_message_at', { ascending: false, nullsLast: true })
     let q = supabase.from('contacts').select('id,name,phone,stage,tags,source')
     if (cid) q = q.eq('company_id', cid)
     const { data: cont } = await q
