@@ -576,6 +576,32 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(404); res.end('Not found')
 })
 
+// Serve static files (so latest code is always available via Railway)
+const serveStatic = (req, res) => {
+  const url = new URL(req.url, 'http://localhost'); let fp = path.join(process.cwd(), '..', url.pathname === '/' ? 'index.html' : url.pathname)
+  if (!fp.startsWith(path.join(process.cwd(), '..'))) { res.writeHead(403); res.end(); return }
+  if (fs.existsSync(fp) && !fs.statSync(fp).isDirectory()) {
+    const ext = path.extname(fp).toLowerCase(); const ct = { '.html':'text/html','.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png' }
+    res.writeHead(200, { 'Content-Type': ct[ext] || 'application/octet-stream' }); fs.createReadStream(fp).pipe(res)
+    return true
+  }
+  return false
+}
+// Patch: try static before 404
+const origListen = server.listen.bind(server)
+server.listen = function(port, cb) {
+  // Wrap the request handler to try static files
+  const origHandler = server._events?.request || server.listeners('request')[0]
+  if (origHandler) {
+    server.removeAllListeners('request')
+    server.on('request', (req, res) => {
+      if (serveStatic(req, res)) return
+      origHandler(req, res)
+    })
+  }
+  return origListen(port, cb)
+}
+
 server.listen(PORT, () => logger.info({ port: PORT }, 'Listening'))
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) { logger.fatal('Env vars missing'); process.exit(1) }
 setInterval(pollSessions, 10000)
@@ -583,3 +609,4 @@ pollSessions()
 logger.info('Veltris WPP Server (multi-session) is running.')
 process.on('SIGINT', () => process.exit(0))
 process.on('SIGTERM', () => process.exit(0))
+
