@@ -469,6 +469,14 @@ const server = http.createServer(async (req, res) => {
             const { data: nc } = await supabase.from('whatsapp_chats').insert({ remote_jid: jid, contact_id: contactId, contact_name: ct[0].name, session_id: d.sessionId }).select().single()
             if (nc) chatId = nc.id
           }
+        } else if (chatId.includes('@')) {
+          // JID format - find or create chat entry
+          const ec = await findChat(chatId, d.sessionId)
+          if (ec) { chatId = ec.id } else {
+            const phone = chatId.split('@')[0]
+            const { data: nc } = await supabase.from('whatsapp_chats').insert({ remote_jid: chatId, contact_name: phone, session_id: d.sessionId }).select().single()
+            if (nc) chatId = nc.id
+          }
         }
         const insertData = { chat_id: chatId, session_id: d.sessionId, text: d.text.substring(0, 500), direction: 'sent', created_at: new Date().toISOString() }
         if (d.mediaUrl) { insertData.media_url = d.mediaUrl; insertData.message_type = d.messageType || 'image' }
