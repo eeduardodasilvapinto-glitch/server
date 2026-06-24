@@ -1495,9 +1495,11 @@ function renderDisparoContactList() {
       list.innerHTML = '<span style="font-size:0.75rem;color:var(--text-muted)">Nenhuma tag criada ainda</span>';
       return;
     }
+    var counts = {}
+    if (_tagsContactList) _tagsContactList.forEach(function(c) { if (c.tags) c.tags.forEach(function(t) { counts[t] = (counts[t] || 0) + 1 }) })
     list.innerHTML = _savedTags.map(t => `
       <span class="wc-tag-existing" onclick="VeltrisWPP.selectLinkTag('${escHtml(t)}')">
-        ${escHtml(t)}
+        ${escHtml(t)} <span style="font-size:0.6rem;color:var(--text-muted);background:rgba(var(--opacity-color),0.06);padding:0 6px;border-radius:100px;margin-left:2px">${counts[t] || 0}</span>
         <span class="tag-del-btn" onclick="event.stopPropagation();VeltrisWPP.deleteTag('${escHtml(t)}')" style="margin-left:4px;cursor:pointer;opacity:0.5">&times;</span>
       </span>
     `).join('');
@@ -1571,6 +1573,7 @@ function renderDisparoContactList() {
     var sel = el('tagLinkSelected');
     if (sel) sel.textContent = label;
     closeLinkTagDrop();
+    renderLinkContactList();
   }
 
   function onLinkSearch() {
