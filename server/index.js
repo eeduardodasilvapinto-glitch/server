@@ -461,6 +461,25 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, removed: toRemove.length })); return
   }
 
+  if (pathname === '/deduplicate-messages') {
+    const sid = url.searchParams.get('sessionId')
+    const companyId = sid ? await getCompanyId(sid) : null
+    const { data: allC } = await supabase.from('whatsapp_chats').select('id,remote_jid')
+    const chatIds = companyId && allC ? allC.filter(function(c){return c.remote_jid}).map(function(c){return c.id}) : (allC||[]).map(function(c){return c.id})
+    let removed = 0
+    for (const cid of chatIds) {
+      const { data: msgs } = await supabase.from('whatsapp_messages').select('id,text,created_at').eq('chat_id', cid).order('created_at', { ascending: false })
+      if (!msgs?.length) continue
+      const seen = {}
+      for (const m of msgs) {
+        const key = (m.text || '').substring(0, 100)
+        if (seen[key]) { await supabase.from('whatsapp_messages').delete().eq('id', m.id); removed++ }
+        else seen[key] = true
+      }
+    }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, removed })); return
+  }
+
   if (pathname === '/deduplicate-contacts') {
     const sid = url.searchParams.get('sessionId'); const companyId = sid ? await getCompanyId(sid) : null
     let q = supabase.from('contacts').select('id,name,phone').order('created_at', { ascending: true })
