@@ -500,16 +500,20 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/db-contacts') {
     const sid = url.searchParams.get('sessionId'); const companyId = sid ? await getCompanyId(sid) : null
     const entry = sid ? sessions.get(sid) : null
-    let q = supabase.from('contacts').select('id,name,phone,tags,notes')
+    // Get all chats for this session to find which contacts belong to this user
+    const { data: chats } = sid ? await supabase.from('whatsapp_chats').select('remote_jid').eq('session_id', sid) : { data: [] }
+    const chatPhones = new Set()
+    if (chats) for (const ch of chats) {
+      const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+      if (np) chatPhones.add(np)
+    }
+    let q = supabase.from('contacts').select('id,name,phone,tags')
     if (companyId) q = q.eq('company_id', companyId)
     const { data: all } = await q
     const filtered = (all || []).filter(c => {
-      // Filter by created_by using notes workaround
-      if (entry?.userId) {
-        var cb = ''
-        try { var n = typeof c.notes === 'string' ? JSON.parse(c.notes) : (c.notes || {}); cb = n.created_by || '' } catch(e) { cb = '' }
-        if (cb && cb !== entry.userId) return false
-      }
+      const np = normalizePhone(c.phone || '')
+      // Only show contacts that have a chat in this user's session, OR contacts without source 'whatsapp'
+      if (c.source === 'whatsapp' && np && chatPhones.size > 0 && !chatPhones.has(np)) return false
       return c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x')
     })
     const seen = {}; const final = []
