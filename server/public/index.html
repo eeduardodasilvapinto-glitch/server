@@ -7698,7 +7698,7 @@
                                     </div>
                                     <div class="chat-messages" id="chatMessages">
                                         <div class="chat-empty" id="chatEmpty">
-<div class="ce-icon"><i class="fi fi-rr-chat-bubble"></i></div>
+<div class="ce-icon"><i class="fi fi-rr-comment"></i></div>
                                             <div>Olá! Eu sou a IA da Veltris.<br />Pergunte sobre estratégia, conteúdos,
                                                 finanças ou
                                                 peça sugestões.</div>
@@ -7741,7 +7741,7 @@
                                 <textarea id="kbText"
                                     placeholder="Cole ou digite informações sobre a Veltris aqui...&#10;&#10;Ex:&#10;- Missão, visão e valores&#10;- Produtos e serviços&#10;- Público-alvo&#10;- Metas do trimestre&#10;- Diferenciais competitivos"></textarea>
                                 <div class="kb-status" id="kbStatus"></div>
-                                <button class="kb-save" onclick="saveKnowledgeBase()" style="margin-top:6px"><i class="fi fi-rr-disk"></i> Salvar
+                                <button class="kb-save" onclick="saveKnowledgeBase()" style="margin-top:6px"><i class="fi fi-rr-floppy-disk"></i> Salvar
                                     Texto</button>
                                 <div class="kb-hint">Esse texto é enviado como contexto para a IA em todas as conversas.
                                 </div>
@@ -8624,14 +8624,14 @@
                     <label style="font-size:0.7rem;color:var(--text-muted);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Ícone</label>
                     <div class="icon-picker" id="iconPicker">
                         <div class="icon-opt selected" data-icon="fi-rr-memo"><i class="fi fi-rr-memo"></i></div>
-                        <div class="icon-opt" data-icon="fi-rr-bulb"><i class="fi fi-rr-bulb"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-bulb"><i class="fi fi-rr-lightbulb"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-rocket"><i class="fi fi-rr-rocket"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-star"><i class="fi fi-rr-star"></i></div>
-                        <div class="icon-opt" data-icon="fi-rr-wrench-simple"><i class="fi fi-rr-wrench-simple"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-wrench-simple"><i class="fi fi-rr-wrench"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-check-circle"><i class="fi fi-rr-check-circle"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-heart"><i class="fi fi-rr-heart"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-flag"><i class="fi fi-rr-flag"></i></div>
-                        <div class="icon-opt" data-icon="fi-rr-target"><i class="fi fi-rr-target"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-target"><i class="fi fi-rr-bullseye"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-chart-line-up"><i class="fi fi-rr-chart-line-up"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-users"><i class="fi fi-rr-users"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-sack-dollar"><i class="fi fi-rr-sack-dollar"></i></div>
@@ -8979,7 +8979,7 @@
         </button>
         <div class="notif-panel" id="notifPanel">
             <div class="notif-header">
-                <h3><i class="fi fi-rr-lightbulb-on"></i> Sugestões da IA</h3>
+                <h3><i class="fi fi-rr-lightbulb"></i> Sugestões da IA</h3>
                 <button onclick="gerarSugestoesIA()">Gerar Novas</button>
             </div>
             <div class="notif-list" id="notifList">
@@ -9957,7 +9957,7 @@
                 var labels = {
                     cat: { '': 'Manter categoria', 'vendas': '<i class="fi fi-rr-chart-line-up"></i> Vendas', 'marketing': '<i class="fi fi-rr-megaphone"></i> Marketing', 'financeiro': '<i class="fi fi-rr-sack-dollar"></i> Financeiro', 'produto': '<i class="fi fi-rr-bullseye"></i> Produto', 'operacional': '<i class="fi fi-rr-settings"></i> Operacional', 'rh': '<i class="fi fi-rr-users"></i> Pessoas & RH' },
                     pri: { '': 'Manter prioridade', 'alta': '<i class="fi fi-rr-arrow-up" style="color:var(--red)"></i> Alta', 'media': '<i class="fi fi-rr-minus" style="color:#facc15"></i> Média', 'baixa': '<i class="fi fi-rr-arrow-down" style="color:#4ade80"></i> Baixa' },
-                    prazo: { '': 'Manter prazo', 'curto': '<i class="fi fi-rr-time-fast"></i> Curto', 'medio': '<i class="fi fi-rr-calendar"></i> Médio', 'longo': '<i class="fi fi-rr-hourglass"></i> Longo' }
+                    prazo: { '': 'Manter prazo', 'curto': '<i class="fi fi-rr-clock"></i> Curto', 'medio': '<i class="fi fi-rr-calendar"></i> Médio', 'longo': '<i class="fi fi-rr-hourglass"></i> Longo' }
                 };
                 labelEl.innerHTML = labels[which][value] || value;
                 closeBC(which);
@@ -10985,7 +10985,7 @@
                 if (!container) return;
                 var conv = getActiveIAConv();
                 if (!conv || !conv.messages || !conv.messages.length) {
-                    container.innerHTML = '<div class="chat-empty" id="chatEmpty"><div class="ce-icon"><i class="fi fi-rr-chat-bubble"></i></div><div>Olá! Eu sou a IA da Veltris.<br/>Pergunte sobre estratégia, conteúdos, finanças ou peça sugestões.</div></div>';
+                    container.innerHTML = '<div class="chat-empty" id="chatEmpty"><div class="ce-icon"><i class="fi fi-rr-comment"></i></div><div>Olá! Eu sou a IA da Veltris.<br/>Pergunte sobre estratégia, conteúdos, finanças ou peça sugestões.</div></div>';
                     return;
                 }
                 container.innerHTML = conv.messages.map(function (msg) {
@@ -12618,7 +12618,7 @@
                 var conv = getActivePopupConv();
                 if (!container) return;
                 if (!conv || !conv.messages.length) {
-                    container.innerHTML = '<div class="chat-empty" id="chatPopupEmpty"><div class="ce-icon"><i class="fi fi-rr-lightbulb-on"></i></div><div>Clique em uma notificação ou digite abaixo para começar.</div></div>';
+                    container.innerHTML = '<div class="chat-empty" id="chatPopupEmpty"><div class="ce-icon"><i class="fi fi-rr-lightbulb"></i></div><div>Clique em uma notificação ou digite abaixo para começar.</div></div>';
                     return;
                 }
                 container.innerHTML = conv.messages.map(function (msg) {
@@ -12994,7 +12994,7 @@
                         sugestoes = parsed;
                         saveSugestoes();
                         renderNotifs();
-                        showToast('<i class="fi fi-rr-lightbulb-on"></i> ' + sugestoes.length + ' sugestões geradas pela IA!');
+                        showToast('<i class="fi fi-rr-lightbulb"></i> ' + sugestoes.length + ' sugestões geradas pela IA!');
                     }
                 } catch (e) {
                     showToast('<i class="fi fi-rr-triangle-warning"></i> Erro ao processar sugestões. Tente novamente.');
@@ -15217,7 +15217,7 @@
                 var copyHtml = copy.map(function (c) {
                     return '<div class="an-copy-item">' +
                         '<span class="an-copy-label">' + esc(c.problema) + '</span>' +
-                        (c.sugestao ? '<div class="an-copy-note"><i class="fi fi-rr-lightbulb-on"></i> ' + esc(c.sugestao) + '</div>' : '') +
+                        (c.sugestao ? '<div class="an-copy-note"><i class="fi fi-rr-lightbulb"></i> ' + esc(c.sugestao) + '</div>' : '') +
                         '</div>';
                 }).join('');
                 document.getElementById('anCopyList').innerHTML = copyHtml || '<div style="color:var(--text-dim);font-size:0.7rem">Nenhum problema de copy identificado.</div>';
@@ -16349,7 +16349,7 @@
                     <div class="ch-popup-chat-area">
                         <div class="chat-popup-messages" id="chatPopupMessages">
                             <div class="chat-empty" id="chatPopupEmpty">
-                                <div class="ce-icon"><i class="fi fi-rr-lightbulb-on"></i></div>
+                                <div class="ce-icon"><i class="fi fi-rr-lightbulb"></i></div>
                                 <div>Clique em uma notificação para começar.</div>
                             </div>
                         </div>
