@@ -31,8 +31,6 @@ const sessions = new Map()
 function normalizePhone(raw) {
   if (!raw) return ''
   var p = raw.replace(/\D/g, '').replace(/^55/, '')
-  // If 10 digits (DDD+8digits), add 9 after DDD (Brazilian mobile)
-  if (p.length === 10) p = p.slice(0, 2) + '9' + p.slice(2)
   return p
 }
 function phoneVariants(raw) {
@@ -520,8 +518,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname.startsWith('/media/')) {
-    const fp = path.join(MEDIA_DIR, pathname.replace('/media/', '').replace(/[^a-zA-Z0-9\-_\.\/]/g, ''))
-    if (fs.existsSync(fp)) { const ext = path.extname(fp).toLowerCase(); const ct = ext === '.ogg' ? 'audio/ogg' : ext === '.jpg' ? 'image/jpeg' : ext === '.png' ? 'image/png' : 'application/octet-stream'; res.writeHead(200, { 'Content-Type': ct }); fs.createReadStream(fp).pipe(res) }
+    let fp = path.join(MEDIA_DIR, pathname.replace('/media/', '').replace(/[^a-zA-Z0-9\-_\.\/]/g, ''))
+    if (!fs.existsSync(fp)) {
+      // Try common extensions
+      for (const ext of ['.jpg', '.jpeg', '.png', '.ogg', '.mp3', '.mp4']) { const fp2 = fp + ext; if (fs.existsSync(fp2)) { fp = fp2; break } }
+    }
+    if (fs.existsSync(fp)) { const ext = path.extname(fp).toLowerCase(); const ct = ext === '.ogg' ? 'audio/ogg' : ext === '.mp3' ? 'audio/mpeg' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.png' ? 'image/png' : ext === '.mp4' ? 'video/mp4' : 'application/octet-stream'; res.writeHead(200, { 'Content-Type': ct }); fs.createReadStream(fp).pipe(res) }
     else { res.writeHead(404); res.end('Not found') }
     return
   }
