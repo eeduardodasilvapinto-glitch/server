@@ -546,11 +546,12 @@ const server = http.createServer(async (req, res) => {
         const { operation, table, params, body: reqBody } = JSON.parse(body)
         const sid = params?.sessionId || url.searchParams.get('sessionId')
         const companyId = sid ? await getCompanyId(sid) : null
+        logger.info({ operation, table, sid, companyId, filters: params?.filters }, 'API proxy request')
         const scoped = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
         if (scoped.includes(table) && !companyId) { res.writeHead(200); res.end(JSON.stringify({ data: [] })); return }
-        if (!scoped.includes(table)) { const r = await supabase.from(table).select(); res.writeHead(200); res.end(JSON.stringify(r)); return }
         if (operation === 'select') {
-          let q = supabase.from(table).select(params?.select || '*').eq('company_id', companyId)
+          let q = supabase.from(table).select(params?.select || '*')
+          if (scoped.includes(table)) q = q.eq('company_id', companyId)
           if (params?.filters) for (const [k, v] of Object.entries(params.filters)) if (k !== 'company_id') q = q.eq(k, v)
           if (params?.order) { const d = params.order.endsWith('.desc'); q = q.order(params.order.replace(/\.(desc|asc)$/, ''), { ascending: !d }) }
           if (params?.limit) q = q.limit(parseInt(params.limit))
