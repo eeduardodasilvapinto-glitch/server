@@ -954,6 +954,12 @@ const server = http.createServer(async (req, res) => {
     const companyId = await getCompanyId(sid)
     if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ error: 'No company' })); return }
     const results = {}
+    // Define sids at function scope for reuse
+    let sids = [sid]
+    try {
+      const { data: companySessions } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', companyId)
+      if (companySessions?.length) sids = [sid, ...companySessions.map(s => s.id).filter(id => id !== sid)]
+    } catch (e) {}
     try {
       // 1. Remove LIDs
       let q = supabase.from('contacts').select('id,name,phone')
@@ -981,8 +987,6 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { results.msgsError = e.message }
     try {
       // 3. Fix contact names from DB contacts
-      const { data: companySessions } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', companyId)
-      const sids = [sid, ...(companySessions || []).map(s => s.id).filter(id => id !== sid)]
       const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name').in('session_id', sids)
       const { data: contacts } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId)
       const byNp = {}
