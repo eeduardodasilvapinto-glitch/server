@@ -1613,21 +1613,18 @@ window.VeltrisWPP = (() => {
   }
 
   function renderLeadsPagination() {
-    var total = Array.isArray(S.leads) ? S.leads.length : 0
-    var perPage = 15
-    var pages = Math.ceil(total / perPage) || 1
-    var current = S._leadsPage || 1
-    var el = document.getElementById('wcLeadsPagination')
-    if (!el) return
+    var data = S._filteredLeads || S.leads || []
+    var total = data.length; var perPage = 15; var pages = Math.ceil(total / perPage) || 1; var cur = S._leadsPage || 1
+    var el = document.getElementById('wcLeadsPagination'); if (!el) return
     if (pages <= 1) { el.innerHTML = ''; return }
-    var html = ''
-    if (current > 1) html += '<button class="btn btn-outline" style="font-size:0.7rem;padding:4px 10px" onclick="VeltrisWPP.goLeadsPage(' + (current - 1) + ')">‹</button>'
-    for (var p = 1; p <= pages; p++) {
-      if (p === current) html += '<button class="btn btn-save" style="font-size:0.7rem;padding:4px 10px;min-width:32px">' + p + '</button>'
-      else html += '<button class="btn btn-outline" style="font-size:0.7rem;padding:4px 10px;min-width:32px" onclick="VeltrisWPP.goLeadsPage(' + p + ')">' + p + '</button>'
-    }
-    if (current < pages) html += '<button class="btn btn-outline" style="font-size:0.7rem;padding:4px 10px" onclick="VeltrisWPP.goLeadsPage(' + (current + 1) + ')">›</button>'
-    el.innerHTML = html
+    var h = ''
+    if (cur > 1) h += '<button class="btn btn-outline" style="font-size:0.7rem;padding:4px 10px" onclick="VeltrisWPP.goLeadsPage(' + (cur - 1) + ')">‹</button>'
+    var startP = Math.max(1, cur - 1)
+    var endP = Math.min(pages, startP + 3)
+    if (endP - startP < 3) startP = Math.max(1, endP - 3)
+    for (var p = startP; p <= endP; p++) h += p === cur ? '<button class="btn btn-save" style="font-size:0.7rem;padding:4px 10px;min-width:32px">' + p + '</button>' : '<button class="btn btn-outline" style="font-size:0.7rem;padding:4px 10px;min-width:32px" onclick="VeltrisWPP.goLeadsPage(' + p + ')">' + p + '</button>'
+    if (cur < pages) h += '<button class="btn btn-outline" style="font-size:0.7rem;padding:4px 10px" onclick="VeltrisWPP.goLeadsPage(' + (cur + 1) + ')">›</button>'
+    el.innerHTML = h
   }
 
   function goLeadsPage(page) {
