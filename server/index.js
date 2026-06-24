@@ -143,7 +143,7 @@ async function startSession(sessionId, userId, companyId) {
         else return
       }
       try {
-        const { data: pending } = await supabase.from('whatsapp_messages').select('id,chat_id,text,media_url,message_type').eq('session_id', sessionId).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 120000).toISOString()).order('created_at', { ascending: true }).limit(20)
+        const { data: pending } = await supabase.from('whatsapp_messages').select('id,chat_id,text,media_url,message_type').eq('session_id', sessionId).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 600000).toISOString()).order('created_at', { ascending: true }).limit(20)
         if (!pending?.length) return
         for (const msg of pending) {
           try {
