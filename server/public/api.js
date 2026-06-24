@@ -52,6 +52,8 @@
     isLoggedIn: function () { return !!this.companyGetSession(); },
     isAdmin: function () {
       var sess = this.companyGetSession();
+      if (sess && sess.user && sess.user.role === 'admin') return true;
+      // Also keep backward compat: master company
       if (sess && sess.company && (sess.company.company_name || sess.company.name || '').toLowerCase() === 'admin') return true;
       return false;
     },
