@@ -416,6 +416,38 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/pump-status') { const sid = url.searchParams.get('sessionId'); const e = sid ? sessions.get(sid) : null; const pump = !!e?.outgoingInterval; let p = []; if (sid) { const r = await supabase.from('whatsapp_messages').select('id,chat_id,text,direction,created_at').eq('session_id', sid).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 120000).toISOString()).limit(10); p = r.data || [] }; const cid = e?.companyId; const dc = dailySent[cid] || { date: 'none', count: 0 }; res.writeHead(200); res.end(JSON.stringify({ pumpRunning: pump, pendingCount: p.length, pending: p, hasSocket: !!e?.sock, sessionStatus: e?.status, dailySent: dc.count, dailyLimit: e?.dailyLimit || DAILY_LIMIT_DEFAULT, dailyDate: dc.date, lastSentText: e?.lastSentText || '' })); return }
   if (pathname === '/set-daily-limit') { const sid = url.searchParams.get('sessionId'); const limit = parseInt(url.searchParams.get('limit')) || DAILY_LIMIT_DEFAULT; const e = sid ? sessions.get(sid) : null; if (e) e.dailyLimit = limit; res.writeHead(200); res.end(JSON.stringify({ ok: true, dailyLimit: limit })); return }
 
+  if (pathname === '/company-desc-status' && req.method === 'GET') {
+    const companyId = url.searchParams.get('companyId')
+    if (!companyId) { res.writeHead(400); res.end(JSON.stringify({ error: 'companyId required' })); return }
+    const { data: company } = await supabase.from('companies').select('permissions').eq('id', companyId).limit(1)
+    const perms = company?.[0]?.permissions || {}
+    const completed = !!(perms.description_completed || perms.description_skipped)
+    res.writeHead(200); res.end(JSON.stringify({ completed, descriptionSector: perms.description_sector || '', description: perms.description || '' })); return
+  }
+
+  if (pathname === '/company-desc-status' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { companyId, action, sector, description } = JSON.parse(body)
+        if (!companyId || !action) { res.writeHead(400); res.end(JSON.stringify({ error: 'companyId and action required' })); return }
+        const { data: company } = await supabase.from('companies').select('permissions').eq('id', companyId).limit(1)
+        const perms = company?.[0]?.permissions || {}
+        if (action === 'save') {
+          perms.description_completed = true
+          if (sector !== undefined) perms.description_sector = sector
+          if (description !== undefined) perms.description = description
+        } else if (action === 'skip') {
+          perms.description_skipped = true
+        }
+        await supabase.from('companies').update({ permissions: perms }).eq('id', companyId)
+        res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
   if (pathname === '/connect') {
     try {
       const userId = url.searchParams.get('user_id') || null; const companyId = url.searchParams.get('company_id') || null

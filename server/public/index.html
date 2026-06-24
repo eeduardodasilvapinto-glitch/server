@@ -16260,6 +16260,7 @@
             // =====================================================================
             //  COMPANY DESCRIPTION (first login)
             // =====================================================================
+            var _wppServerUrl = window.location.port === '3123' || window.location.hostname === 'localhost' ? 'http://localhost:3123' : 'https://server-production-d7c0.up.railway.app'
             function getCompanyDescription() {
                 return _companyMode ? (_companyMode.description || '') : '';
             }
@@ -16280,6 +16281,10 @@
                     _companyMode.description = desc;
                     try { localStorage.setItem('veltris_company_desc_' + _companyMode.id, JSON.stringify({ sector: sector, description: desc })); } catch (e) {}
                     api.companyUpdate(_companyMode.id, { description_sector: sector, description: desc }).catch(function () {});
+                    fetch(_wppServerUrl + '/company-desc-status', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ companyId: _companyMode.id, action: 'save', sector: sector, description: desc })
+                    }).catch(function(){});
                 }
                 document.getElementById('companyDescOverlay').style.display = 'none';
                 showToast('Informações salvas! A IA usará esse contexto para gerar sugestões mais relevantes.');
@@ -16321,6 +16326,12 @@
                 var overlay = document.getElementById('skipDescOverlay');
                 if (overlay._skipTimer) clearInterval(overlay._skipTimer);
                 overlay.style.display = 'none';
+                if (_companyMode) {
+                    fetch(_wppServerUrl + '/company-desc-status', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ companyId: _companyMode.id, action: 'skip' })
+                    }).catch(function(){});
+                }
                 showToast('Você pode preencher a descrição da empresa em Configurações quando quiser.');
             }
 
@@ -16328,18 +16339,17 @@
                 if (!isCompanyMode() || !_companyMode) return;
                 var hasDesc = _companyMode.description || _companyMode.descriptionSector;
                 if (hasDesc) return;
-                try {
-                    var saved = localStorage.getItem('veltris_company_desc_' + _companyMode.id);
-                    if (saved) {
-                        var parsed = JSON.parse(saved);
-                        if (parsed.sector || parsed.description) {
-                            _companyMode.descriptionSector = parsed.sector || '';
-                            _companyMode.description = parsed.description || '';
-                            return;
-                        }
+                fetch(_wppServerUrl + '/company-desc-status?companyId=' + encodeURIComponent(_companyMode.id))
+                .then(function(r){ return r.json() })
+                .then(function(d){
+                    if (d.completed) {
+                        if (d.descriptionSector) _companyMode.descriptionSector = d.descriptionSector;
+                        if (d.description) _companyMode.description = d.description;
+                        return;
                     }
-                } catch (e) {}
-                setTimeout(openCompanyDescription, 800);
+                    setTimeout(openCompanyDescription, 800);
+                })
+                .catch(function(){ setTimeout(openCompanyDescription, 800); })
             }
 
             // Initialize
