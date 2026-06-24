@@ -402,7 +402,9 @@ const server = http.createServer(async (req, res) => {
       active.push({ sessionId: id, status: e.status, phone: e.phone, hasQr: !!e.qrCode, userId: e.userId, companyId: e.companyId })
     }
     if (!active.length && cid) {
-      const { data: dbs } = await supabase.from('whatsapp_sessions').select('id,status,phone,user_id,company_id').eq('company_id', cid)
+      let q = supabase.from('whatsapp_sessions').select('id,status,phone,user_id,company_id').eq('company_id', cid)
+      if (uid) q = q.eq('user_id', uid)
+      const { data: dbs } = await q
       if (dbs) for (const s of dbs) active.push({ sessionId: s.id, status: s.status === 'connected' ? 'connecting' : s.status, phone: s.phone, userId: s.user_id, companyId: s.company_id })
     }
     res.writeHead(200); res.end(JSON.stringify({ sessions: active })); return

@@ -137,7 +137,11 @@ window.VeltrisWPP = (() => {
     // Try to find active server session
     try {
       var companyId = (typeof window._companyMode !== 'undefined' && window._companyMode) ? window._companyMode.id : null;
-      var sessUrl = _wppServerUrl + '/sessions' + (companyId ? '?company_id=' + encodeURIComponent(companyId) : '');
+      var userId = S.currentUser;
+      var params = []
+      if (companyId) params.push('company_id=' + encodeURIComponent(companyId))
+      if (userId) params.push('user_id=' + encodeURIComponent(userId))
+      var sessUrl = _wppServerUrl + '/sessions' + (params.length ? '?' + params.join('&') : '');
       var listResp = await fetch(sessUrl)
       if (listResp.ok) {
         var listData = await listResp.json()
