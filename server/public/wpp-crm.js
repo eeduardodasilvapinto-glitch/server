@@ -653,6 +653,14 @@ window.VeltrisWPP = (() => {
       aiBtn.title = 'Analisar conversa com IA';
       header.appendChild(aiBtn);
     }
+    if (header && !header.querySelector('.wc-info-btn')) {
+      var infoBtn = document.createElement('button');
+      infoBtn.className = 'wc-ai-btn';
+      infoBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+      infoBtn.title = 'Informações do contato';
+      infoBtn.onclick = function() { VeltrisWPP.showContactInfo(S.activeChatId); };
+      header.appendChild(infoBtn);
+    }
     if (S.messages.length === 0) {
       container.style.display = 'flex';
       container.innerHTML = '<div style="margin:auto;text-align:center;color:var(--text-muted);font-size:0.78rem">Nenhuma mensagem ainda. Envie a primeira!</div>';
@@ -727,6 +735,28 @@ window.VeltrisWPP = (() => {
       setTimeout(function() {
         loadMessages(S.activeChatId)
       }, 3000)
+    }
+  }
+
+  function showContactInfo(chatId) {
+    var chat = S.chats.find(function(c) { return c.id === chatId })
+    if (!chat) return
+    var contact = S.contacts[chat.contact_id] || {}
+    var phone = chat.contact_phone || contact.phone || chat.remote_jid?.split('@')[0] || ''
+    var remoteJid = chat.remote_jid || ''
+    var name = chat.contact_name || contact.name || 'Desconhecido'
+    // Fetch full info from server
+    var info = '👤 Nome: ' + name + '\n📞 Telefone: ' + phone + '\n🆔 WhatsApp JID: ' + remoteJid + '\n📋 ID do contato: ' + (chat.contact_id || 'N/A') + '\n💬 ID do chat: ' + (chat.id || 'N/A')
+    if (remoteJid) {
+      fetch(_wppServerUrl + '/check-chat?chatId=' + encodeURIComponent(chat.id) + '&sid=' + encodeURIComponent(S._serverSessionId || '')).then(function(r){ return r.json() }).then(function(d){
+        if (d.chat) {
+          info = '👤 Nome: ' + name + '\n📞 Telefone: ' + phone + '\n🆔 WhatsApp JID: ' + (d.chat.remote_jid || remoteJid) + '\n📋 Contato ID: ' + (d.chat.contact_id || 'N/A') + '\n💬 Chat ID: ' + d.chat.id
+          if (d.contact) info += '\n📛 Contato DB: ' + (d.contact.name || 'N/A') + '\n📱 Telefone DB: ' + (d.contact.phone || 'N/A')
+        }
+        alert(info)
+      }).catch(function(){ alert(info) })
+    } else {
+      alert(info)
     }
   }
 
@@ -2816,6 +2846,7 @@ function renderDisparoContactList() {
     getActiveChatId: function() { return S.activeChatId },
     getMessagesCount: function() { return S.messages?.length || 0 },
     analyzeConversation,
+    showContactInfo,
     updateSyncStatus,
     startSyncMonitor,
     loadLabels,
