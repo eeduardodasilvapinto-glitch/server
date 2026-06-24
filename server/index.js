@@ -695,14 +695,14 @@ const server = http.createServer(async (req, res) => {
         let rows = []
         if (ext === '.csv') {
           const records = parse(content, { columns: true, skip_empty_lines: true, relax_column_count: true })
-          rows = records.map(extractRow).filter(r => r.phone && r.phone.length >= 8)
-          if (rows.length < records.length) logger.info({ sessionId, total: records.length, valid: rows.length }, 'Spreadsheet row filter')
+          rows = records.map(extractRow).filter(r => r.phone && r.phone.length >= 2)
+          if (rows.length < records.length) logger.info({ sessionId, total: records.length, valid: rows.length, skipped: records.map(extractRow).filter(r => !r.phone || r.phone.length < 2).map(function(r){return r}).slice(0, 3) }, 'Spreadsheet row filter')
         } else {
           const wb = XLSX.read(content, { type: 'base64' })
           const ws = wb.Sheets[wb.SheetNames[0]]
           const data = XLSX.utils.sheet_to_json(ws)
-          rows = data.map(extractRow).filter(r => r.phone && r.phone.length >= 8)
-          if (rows.length < data.length) logger.info({ sessionId, total: data.length, valid: rows.length }, 'XLSX row filter')
+          rows = data.map(extractRow).filter(r => r.phone && r.phone.length >= 2)
+          if (rows.length < data.length) logger.info({ sessionId, total: data.length, valid: rows.length, skipped: data.map(extractRow).filter(r => !r.phone || r.phone.length < 2).slice(0, 3) }, 'XLSX row filter')
         }
         // Save metadata
         const meta = { fileId, name: name || fileId, ext, rowCount: rows.length, createdAt: new Date().toISOString() }
