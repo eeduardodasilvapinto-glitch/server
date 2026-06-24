@@ -294,22 +294,25 @@ async function startSession(sessionId, userId, companyId) {
   })
 
   sock.ev.on('contacts.upsert', async (contacts) => {
+    // Get all sessions for this company to update chat names everywhere
+    const { data: sessList } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', companyId)
+    const allSids = [sessionId, ...(sessList || []).map(s => s.id).filter(id => id !== sessionId)]
     for (const c of contacts) {
       const jid = c.id; if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid === 'status@broadcast') continue
       if (!c.name && !c.notify) continue; const phone = jid.split('@')[0]
       if (normalizePhone(phone).length >= 14) continue
       const name = typeof c.name === 'string' ? c.name : (typeof c.notify === 'string' ? c.notify : phone)
+      if (!name || /^\d+$/.test(name)) continue
       const ex = await findContactByNameOrPhone(phone, name, companyId)
       if (ex) {
-        await supabase.from('contacts').update({ name, phone: normalizePhone(phone) }).eq('id', ex.id)
-        // Also update chat name if contact has a real saved name
-        if (c.name && c.name !== phone) {
+        if (ex.name !== name) {
+          await supabase.from('contacts').update({ name, phone: normalizePhone(phone) }).eq('id', ex.id)
+          // Update chat name in ALL sessions for this company
           const np = normalizePhone(phone)
-          const { data: chats } = await supabase.from('whatsapp_chats').select('id,contact_name').eq('session_id', sessionId)
+          const { data: chats } = await supabase.from('whatsapp_chats').select('id').in('session_id', allSids)
           if (chats) for (const ch of chats) {
-            const chNp = normalizePhone(ch.remote_jid?.split('@')[0] || '')
-            if (chNp === np && ch.contact_name !== c.name) {
-              await supabase.from('whatsapp_chats').update({ contact_name: c.name }).eq('id', ch.id)
+            if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np) {
+              await supabase.from('whatsapp_chats').update({ contact_name: name }).eq('id', ch.id)
             }
           }
         }
@@ -367,8 +370,24 @@ async function startSession(sessionId, userId, companyId) {
 
 async function syncContacts(sessionId, companyId) {
   const entry = sessions.get(sessionId)
-  if (!entry?.sock?.store?.contacts) { setTimeout(() => syncContacts(sessionId, companyId), 10000); return }
+  // Retry with backoff up to 5 min if store not ready
+  if (!entry?.sock?.store?.contacts) {
+    if (!entry?._syncRetries) entry._syncRetries = 0
+    entry._syncRetries++
+    if (entry._syncRetries < 30) { setTimeout(() => syncContacts(sessionId, companyId), 10000); return }
+    return
+  }
+  entry._syncRetries = 0
   try {
+    // Get all chats for this company to update names efficiently
+    const { data: sessionsList } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', companyId)
+    const allSids = [sessionId, ...(sessionsList || []).map(s => s.id).filter(id => id !== sessionId)]
+    const { data: allChats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name').in('session_id', allSids)
+    const chatByNp = {}
+    if (allChats) for (const ch of allChats) {
+      const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+      if (np) chatByNp[np] = ch
+    }
     for (const [jid, contact] of Object.entries(entry.sock.store.contacts)) {
       if (jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter') || jid === 'status@broadcast') continue
       if (!contact.name && !contact.notify && !contact.verifiedName) continue
@@ -379,13 +398,10 @@ async function syncContacts(sessionId, companyId) {
       if (ex) {
         if (ex.name !== name) {
           await supabase.from('contacts').update({ name, phone: normalizePhone(phone) }).eq('id', ex.id)
-          // Also update chat name
+          // Update chat name in ANY session for this company
           const np = normalizePhone(phone)
-          const { data: chats } = await supabase.from('whatsapp_chats').select('id').eq('session_id', sessionId)
-          if (chats) for (const ch of chats) {
-            if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np) {
-              await supabase.from('whatsapp_chats').update({ contact_name: name }).eq('id', ch.id)
-            }
+          if (chatByNp[np] && chatByNp[np].contact_name !== name) {
+            await supabase.from('whatsapp_chats').update({ contact_name: name }).eq('id', chatByNp[np].id)
           }
         }
       } else {
@@ -393,6 +409,10 @@ async function syncContacts(sessionId, companyId) {
         if (companyId) p.company_id = companyId
         const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.notes = JSON.stringify({created_by: uEntry.userId})
         await supabase.from('contacts').insert(p)
+        // Also update chat name if it exists
+        if (chatByNp[normalizePhone(phone)]) {
+          await supabase.from('whatsapp_chats').update({ contact_name: name }).eq('id', chatByNp[normalizePhone(phone)].id)
+        }
       }
     }
   } catch (e) {}
@@ -445,6 +465,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/qr') { const sid = url.searchParams.get('sessionId'); const e = sid ? sessions.get(sid) : null; res.writeHead(200); res.end(JSON.stringify({ qr_code: e?.qrCode || null })); return }
   if (pathname === '/sync-status') { const sid = url.searchParams.get('sessionId'); const e = sid ? sessions.get(sid) : null; res.writeHead(200); res.end(JSON.stringify({ syncing: e?.syncingHistory || false, progress: e?.syncProgress || '' })); return }
   if (pathname === '/pump-status') { const sid = url.searchParams.get('sessionId'); const e = sid ? sessions.get(sid) : null; const pump = !!e?.outgoingInterval; let p = []; if (sid) { const r = await supabase.from('whatsapp_messages').select('id,chat_id,text,direction,created_at').eq('session_id', sid).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 120000).toISOString()).limit(10); p = r.data || [] }; const cid = e?.companyId; const dc = dailySent[cid] || { date: 'none', count: 0 }; res.writeHead(200); res.end(JSON.stringify({ pumpRunning: pump, pendingCount: p.length, pending: p, hasSocket: !!e?.sock, sessionStatus: e?.status, dailySent: dc.count, dailyLimit: e?.dailyLimit || DAILY_LIMIT_DEFAULT, dailyDate: dc.date, lastSentText: e?.lastSentText || '' })); return }
+  if (pathname === '/sync-contacts-now') { const sid = url.searchParams.get('sessionId'); if (!sid || !sessions.get(sid)) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required or invalid' })); return }; const e = sessions.get(sid); if (e) e._syncRetries = 0; syncContacts(sid, e?.companyId); res.writeHead(200); res.end(JSON.stringify({ ok: true })); return }
   if (pathname === '/set-daily-limit') { const sid = url.searchParams.get('sessionId'); const limit = parseInt(url.searchParams.get('limit')) || DAILY_LIMIT_DEFAULT; const e = sid ? sessions.get(sid) : null; if (e) e.dailyLimit = limit; res.writeHead(200); res.end(JSON.stringify({ ok: true, dailyLimit: limit })); return }
 
   if (pathname === '/company-desc-status' && req.method === 'GET') {
