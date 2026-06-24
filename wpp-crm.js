@@ -1519,11 +1519,11 @@ window.VeltrisWPP = (() => {
         <input id="wcLeadSearch" placeholder="Buscar cliente..." oninput="VeltrisWPP.filterLeads()" />
         <div class="cs-wrap" style="position:relative">
           <div class="cs-trigger" id="wcStageTrigger" onclick="VeltrisWPP.toggleStageDropdown(event)">
-            <span id="wcStageSelected">Todos os estágios</span>
+            <span id="wcStageSelected">Estágios</span>
             <span class="cs-arrow">▾</span>
           </div>
           <div class="cs-drop" id="wcStageDrop">
-            <div class="cs-opt" data-value="" onclick="VeltrisWPP.selectStage('')">Todos os estágios</div>
+            <div class="cs-opt" data-value="" onclick="VeltrisWPP.selectStage('')">Estágios</div>
             ${S.stages.map(s => `<div class="cs-opt" data-value="${s}" onclick="VeltrisWPP.selectStage('${s}')">${stageLabel(s)}</div>`).join('')}
           </div>
         </div>
@@ -1695,7 +1695,7 @@ window.VeltrisWPP = (() => {
   }
   function selectStage(value) {
     _wcStageValue = value;
-    var label = value ? stageLabel(value) : 'Todos os estágios';
+    var label = value ? stageLabel(value) : 'Estágios';
     el('wcStageSelected').textContent = label;
     closeStageDropdown();
     filterLeads();

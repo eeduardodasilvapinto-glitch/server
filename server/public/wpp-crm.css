@@ -553,8 +553,8 @@
 .wc-lead-toolbar .cs-wrap .cs-trigger {
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 10px;
+  border-radius: 100px;
+  padding: 6px 12px;
   font-size: 0.72rem;
   color: var(--text);
   cursor: pointer;
@@ -562,7 +562,9 @@
   align-items: center;
   gap: 4px;
   white-space: nowrap;
-  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
 }
 .wc-lead-toolbar .cs-wrap .cs-drop {
   position: absolute;
@@ -570,7 +572,7 @@
   left: 0;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 4px;
   z-index: 100;
   min-width: 140px;
