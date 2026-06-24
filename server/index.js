@@ -320,8 +320,25 @@ async function syncContacts(sessionId, companyId) {
       if (!contact.name && !contact.notify && !contact.verifiedName) continue
       const phone = jid.split('@')[0]; if (normalizePhone(phone).length >= 14) continue
       const name = contact.name || contact.notify || contact.verifiedName || phone
+      if (!name || /^\d+$/.test(name)) continue
       const ex = await findContactByNameOrPhone(phone, name, companyId)
-      if (!ex) { const p = { name, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }; if (companyId) p.company_id = companyId; await supabase.from('contacts').insert(p) }
+      if (ex) {
+        if (ex.name !== name) {
+          await supabase.from('contacts').update({ name, phone: normalizePhone(phone) }).eq('id', ex.id)
+          // Also update chat name
+          const np = normalizePhone(phone)
+          const { data: chats } = await supabase.from('whatsapp_chats').select('id').eq('session_id', sessionId)
+          if (chats) for (const ch of chats) {
+            if (normalizePhone(ch.remote_jid?.split('@')[0] || '') === np) {
+              await supabase.from('whatsapp_chats').update({ contact_name: name }).eq('id', ch.id)
+            }
+          }
+        }
+      } else {
+        const p = { name, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }
+        if (companyId) p.company_id = companyId
+        await supabase.from('contacts').insert(p)
+      }
     }
   } catch (e) {}
 }
