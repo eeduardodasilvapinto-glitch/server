@@ -246,7 +246,7 @@ async function startSession(sessionId, userId, companyId) {
   })
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify' && type !== 'append') return
+    if (type !== 'notify') return
     for (const msg of messages) {
       try {
         if (!msg.message) continue; const jid = msg.key.remoteJid
