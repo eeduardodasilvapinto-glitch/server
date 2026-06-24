@@ -1250,13 +1250,15 @@ window.VeltrisWPP = (() => {
     var file = input.files[0]
     if (!S._serverSessionId) { alert('Conecte o WhatsApp primeiro'); return }
     var isXlsx = file.name.endsWith('.xlsx')
-    // Check file size
-    if (file.size > 10 * 1024 * 1024) { alert('Arquivo muito grande. Máximo 10MB.'); return }
+    if (file.size > 10 * 1024 * 1024) { alert('Arquivo muito grande. Máximo 10MB.'); input.value = ''; return }
+    var info = el('dispSheetInfo')
+    if (info) info.innerHTML = '<span style="color:var(--text-muted);font-size:0.75rem">Processando <i class="fi fi-rr-spinner"></i></span>'
     var reader = new FileReader()
-    reader.onerror = function() { alert('Erro ao ler o arquivo') }
+    reader.onerror = function() { alert('Erro ao ler o arquivo'); input.value = '' }
     reader.onload = function(e) {
       var raw = e.target.result
       var content = isXlsx ? btoa(new Uint8Array(raw).reduce(function(d,b){return d+String.fromCharCode(b)},'')) : raw
+      if (!content || content.length < 10) { alert('Arquivo vazio ou inválido'); input.value = ''; return }
       var body = { name: file.name, content: content, sessionId: S._serverSessionId }
       fetch(_wppServerUrl + '/upload-spreadsheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function(r){ return r.json() }).then(function(d) {
         if (d.fileId) {
@@ -1267,14 +1269,15 @@ window.VeltrisWPP = (() => {
           fetch(_wppServerUrl + '/list-spreadsheets?sessionId=' + encodeURIComponent(S._serverSessionId)).then(function(sr){ return sr.json() }).then(function(sd) {
             var sheets = sd.files || []
             var drop = el('dispSheetDrop')
-            if (drop) drop.innerHTML = '<div class="cs-opt" data-value="" onclick="VeltrisWPP.selectSpreadsheet(\'\')">Nenhuma</div>' + sheets.map(function(s) {
+              if (drop) drop.innerHTML = '<div class="cs-opt" data-value="" onclick="VeltrisWPP.selectSpreadsheet(\'\')">Nenhuma</div>' + sheets.map(function(s) {
               return '<div class="cs-opt" style="display:flex;justify-content:space-between" data-value="' + s.fileId + '" onclick="VeltrisWPP.selectSpreadsheet(\'' + s.fileId + '\',\'' + escHtml(s.name) + '\', ' + s.rowCount + ')"><span>' + escHtml(s.name) + ' (' + s.rowCount + ')</span><span style="color:var(--red);cursor:pointer" onclick="event.stopPropagation();VeltrisWPP.deleteSpreadsheet(\'' + s.fileId + '\')">&times;</span></div>'
             }).join('')
           }).catch(function(){})
         } else {
-          alert('Erro: ' + (d.error || 'Falha ao enviar planilha'))
+          alert('Erro: ' + (d.error || 'Falha ao enviar planilha')); input.value = ''
         }
-      }).catch(function(e){ alert('Erro ao enviar planilha: ' + e.message) })
+      }).catch(function(e){ alert('Erro ao enviar planilha: ' + e.message); input.value = '' })
+      input.value = ''
     }
     if (isXlsx) reader.readAsArrayBuffer(file)
     else reader.readAsText(file)
