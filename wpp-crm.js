@@ -1248,20 +1248,21 @@ window.VeltrisWPP = (() => {
   function uploadSpreadsheet(input) {
     if (!input || !input.files?.[0]) return
     var file = input.files[0]
+    if (!S._serverSessionId) { alert('Conecte o WhatsApp primeiro'); return }
     var reader = new FileReader()
     reader.onload = async function(e) {
       var content = e.target.result
       var isXlsx = file.name.endsWith('.xlsx')
-      var body = { name: file.name, content: isXlsx ? btoa(String.fromCharCode(...new Uint8Array(content))) : content, sessionId: S._serverSessionId }
+      var body = { name: file.name, content: isXlsx ? btoa(String.fromCharCode.apply(null, new Uint8Array(content))) : content, sessionId: S._serverSessionId }
       try {
         var r = await fetch(_wppServerUrl + '/upload-spreadsheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         if (r.ok) {
           var d = await r.json()
+          if (!d.fileId) { alert('Erro: ' + (d.error || 'Falha ao enviar planilha')); return }
           _selectedSpreadsheet = { fileId: d.fileId, name: d.name, rowCount: d.rowCount }
           var info = el('dispSheetInfo')
           if (info) info.innerHTML = '<span class="wc-tag" style="background:rgba(34,197,94,0.12);color:rgb(34,197,94)"><i class="fi fi-rr-check-circle"></i> ' + escHtml(d.name) + ' (' + d.rowCount + ' contatos)</span>'
           updateDisparoCount()
-          // Rebuild saved list dropdown
           try {
             var sr = await fetch(_wppServerUrl + '/list-spreadsheets?sessionId=' + encodeURIComponent(S._serverSessionId))
             if (sr.ok) { var sd = await sr.json(); var sheets = sd.files || []
@@ -1271,6 +1272,9 @@ window.VeltrisWPP = (() => {
               }).join('')
             }
           } catch (e) {}
+        } else {
+          var errData = await r.json().catch(function(){return{}})
+          alert('Erro ao enviar planilha: ' + (errData.error || r.status))
         }
       } catch (e) { alert('Erro ao enviar planilha: ' + e.message) }
     }
@@ -1336,13 +1340,13 @@ window.VeltrisWPP = (() => {
     var fill = el('dispProgressFill');
     var pctText = el('dispProgressText');
     var result = el('dispResult');
-    if (!btn || !progress) return;
+    if (!btn || !progress || !result) return;
     var message = el('dispMessage')?.value?.trim();
     if (!message) { alert('Digite uma mensagem'); return; }
     var mode = document.querySelector('[name="dispMode"]:checked')?.value
 
     if (mode === 'spreadsheet') {
-      if (!_selectedSpreadsheet) { alert('Selecione ou envie uma planilha'); return }
+      if (!_selectedSpreadsheet || !_selectedSpreadsheet.fileId) { alert('Envie ou selecione uma planilha primeiro'); return }
       btn.disabled = true; btn.textContent = 'Enviando...'; progress.style.display = 'flex'; result.style.display = 'none'
       try {
         var r = await fetch(_wppServerUrl + '/send-spreadsheet-disparo', {
@@ -1351,9 +1355,12 @@ window.VeltrisWPP = (() => {
         })
         if (r.ok) {
           var d = await r.json()
-          var pct = 100; if (fill) fill.style.width = '100%'; if (pctText) pctText.textContent = '100%'
+          if (fill) fill.style.width = '100%'; if (pctText) pctText.textContent = '100%'
           result.style.display = ''
           result.innerHTML = '<div class="wc-disparo-result-msg ' + (d.failed === 0 ? 'success' : 'warning') + '"><strong>' + d.sent + '</strong> enviada(s), <strong>' + d.failed + '</strong> falha(s)</div>'
+        } else {
+          var errData = await r.json().catch(function(){return{}})
+          result.style.display = ''; result.innerHTML = '<div class="wc-disparo-result-msg warning">Erro: ' + (errData.error || r.status) + '</div>'
         }
       } catch (e) { result.style.display = ''; result.innerHTML = '<div class="wc-disparo-result-msg warning">Erro: ' + e.message + '</div>' }
       btn.disabled = false; btn.textContent = 'Enviar Disparo'
