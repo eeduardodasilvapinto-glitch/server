@@ -870,6 +870,39 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, fixed })); return
   }
 
+  if (pathname === '/migrate-created-by') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const entry = sessions.get(sid)
+    const companyId = await getCompanyId(sid)
+    const { data: sessionsList } = await supabase.from('whatsapp_sessions').select('id,user_id').eq('company_id', companyId)
+    const userIdBySession = {}
+    if (sessionsList) for (const s of sessionsList) userIdBySession[s.id] = s.user_id
+    const sids = Object.keys(userIdBySession)
+    if (!entry?.userId) sids.push(sid)
+    const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name,session_id').in('session_id', sids.length ? sids : [sid])
+    const { data: contacts } = await supabase.from('contacts').select('id,phone,notes').eq('company_id', companyId)
+    const contactByNp = {}
+    if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); if (np) contactByNp[np] = c }
+    let updated = 0
+    if (chats) for (const ch of chats) {
+      const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+      if (!np || !contactByNp[np]) continue
+      const ct = contactByNp[np]
+      let hasCreator = false
+      try { var n = typeof ct.notes === 'string' ? JSON.parse(ct.notes) : (ct.notes || {}); if (n.created_by) hasCreator = true } catch(e) {}
+      if (hasCreator) continue
+      const uid = userIdBySession[ch.session_id] || entry?.userId
+      if (uid) {
+        const oldNotes = ct.notes ? (typeof ct.notes === 'string' ? (() => { try { return JSON.parse(ct.notes) } catch(e) { return { _: ct.notes } } })() : ct.notes) : {}
+        oldNotes.created_by = uid
+        await supabase.from('contacts').update({ notes: JSON.stringify(oldNotes) }).eq('id', ct.id)
+        updated++
+      }
+    }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, updated })); return
+  }
+
   if (pathname === '/list-tags') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(200); res.end(JSON.stringify({ tags: [] })); return }
