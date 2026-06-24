@@ -1227,7 +1227,16 @@ window.VeltrisWPP = (() => {
   function onDisparoFilterChange() { updateDisparoCount(); }
   function onDisparoSearch() { renderDisparoContactList(); }
 
-  function renderDisparoContactList() {
+  function formatPhone(p) {
+  if (!p) return ''
+  var d = p.replace(/\D/g, '').replace(/^55/, '')
+  if (d.length === 13) d = d.replace(/^(\d{2})(\d{2})(\d{5})(\d{4})$/, '+ () -')
+  else if (d.length === 12) d = d.replace(/^(\d{2})(\d{2})(\d{4})(\d{4})$/, '+ () -')
+  else if (d.length === 11) d = d.replace(/^(\d{2})(\d{5})(\d{4})$/, '() -')
+  else if (d.length === 10) d = d.replace(/^(\d{2})(\d{4})(\d{4})$/, '() -')
+  return d
+}
+function renderDisparoContactList() {
     var list = el('dispContactList');
     if (!list) return;
     var q = (el('dispSearch')?.value || '').toLowerCase();
@@ -1239,7 +1248,7 @@ window.VeltrisWPP = (() => {
       <label class="wc-disparo-item">
         <input type="checkbox" class="disp-contact-cb" value="${c.id}" onchange="VeltrisWPP.updateDisparoCount()" />
         <span class="wc-disparo-item-name">${escHtml(c.name || '—')}</span>
-        <span class="wc-disparo-item-phone">${escHtml(c.phone || '')}</span>
+        <span class="wc-disparo-item-phone">${escHtml(formatPhone(c.phone || \047\047))}</span>
       </label>
     `).join('') || '<div class="wc-disparo-empty">Nenhum contato encontrado</div>';
   }
