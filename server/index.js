@@ -519,7 +519,10 @@ const server = http.createServer(async (req, res) => {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
     const cid = await getCompanyId(sid)
-    // Get only CONNECTED session IDs for this company
+    // Only include sid if it's from a connected session
+    const entry = sessions.get(sid)
+    if (!entry || entry.status !== 'connected') { res.writeHead(200); res.end(JSON.stringify({ chats: [] })); return }
+    // Get other connected session IDs for this company
     const { data: companySessions } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', cid).eq('status', 'connected')
     const sessionIds = [sid, ...(companySessions || []).map(function(s){ return s.id }).filter(function(id){ return id !== sid })]
     const { data: wa } = await supabase.from('whatsapp_chats').select('*').in('session_id', sessionIds).order('last_message_at', { ascending: false, nullsLast: true })
