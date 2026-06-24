@@ -136,7 +136,12 @@ async function startSession(sessionId, userId, companyId) {
   function startOutgoingPump() {
     if (entry.outgoingInterval) clearInterval(entry.outgoingInterval)
     entry.outgoingInterval = setInterval(async () => {
-      if (!entry.sock) return
+      if (!entry.sock) {
+        // Try to recover - check if socket was recreated
+        const refreshed = sessions.get(sessionId)
+        if (refreshed?.sock) { entry.sock = refreshed.sock }
+        else return
+      }
       try {
         const { data: pending } = await supabase.from('whatsapp_messages').select('id,chat_id,text,media_url,message_type').eq('session_id', sessionId).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 120000).toISOString()).order('created_at', { ascending: true }).limit(20)
         if (!pending?.length) return
