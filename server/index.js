@@ -499,9 +499,17 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/db-contacts') {
     const sid = url.searchParams.get('sessionId'); const companyId = sid ? await getCompanyId(sid) : null
-    const entry = sid ? sessions.get(sid) : null
-    // Get all chats for this session to find which contacts belong to this user
-    const { data: chats } = sid ? await supabase.from('whatsapp_chats').select('remote_jid').eq('session_id', sid) : { data: [] }
+    // If no session, return only non-whatsapp contacts
+    if (!sid) {
+      let q = supabase.from('contacts').select('id,name,phone,tags').neq('source', 'whatsapp')
+      if (companyId) q = q.eq('company_id', companyId)
+      const { data: all } = await q
+      const filtered = (all || []).filter(c => c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x'))
+      const seen = {}; const final = []
+      for (const c of filtered) { const np = normalizePhone(c.phone); if (np && !seen[np]) { seen[np] = true; final.push({ id: c.id, name: c.name, phone: c.phone, tags: c.tags }) } }
+      res.writeHead(200); res.end(JSON.stringify({ contacts: final })); return
+    }
+    const { data: chats } = await supabase.from('whatsapp_chats').select('remote_jid').eq('session_id', sid)
     const chatPhones = new Set()
     if (chats) for (const ch of chats) {
       const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
@@ -512,8 +520,7 @@ const server = http.createServer(async (req, res) => {
     const { data: all } = await q
     const filtered = (all || []).filter(c => {
       const np = normalizePhone(c.phone || '')
-      // Only show contacts that have a chat in this user's session, OR contacts without source 'whatsapp'
-      if (c.source === 'whatsapp' && np && chatPhones.size > 0 && !chatPhones.has(np)) return false
+      if (c.source === 'whatsapp' && np && !chatPhones.has(np)) return false
       return c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x')
     })
     const seen = {}; const final = []
