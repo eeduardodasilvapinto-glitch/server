@@ -507,26 +507,22 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (pathname === '/diag') {
+    const tables = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
+    const result = {}
+    for (const t of tables) {
+      try {
+        const { data } = await supabase.from(t).select('company_id')
+        const counts = {}
+        if (data) for (const r of data) { const cid = r.company_id || 'NULL'; counts[cid] = (counts[cid] || 0) + 1 }
+        result[t] = counts
+      } catch (e) { result[t] = { error: e.message } }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result, null, 2)); return
+  }
+
   res.writeHead(404); res.end('Not found')
 })
-
-// Diagnostic endpoint for company data distribution
-const diagServer = http.createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  if (req.url !== '/diag') { res.writeHead(404); res.end(); return }
-  const tables = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
-  const result = {}
-  for (const t of tables) {
-    try {
-      const { data } = await supabase.from(t).select('company_id')
-      const counts = {}
-      if (data) for (const r of data) { const cid = r.company_id || 'NULL'; counts[cid] = (counts[cid] || 0) + 1 }
-      result[t] = counts
-    } catch (e) { result[t] = { error: e.message } }
-  }
-  res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result, null, 2))
-})
-diagServer.listen(3124, () => logger.info({ port: 3124 }, 'Diagnostic server'))
 
 server.listen(PORT, () => logger.info({ port: PORT }, 'Listening'))
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) { logger.fatal('Env vars missing'); process.exit(1) }
