@@ -850,6 +850,28 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (pathname === '/link-tag' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { contactId, tag, add, sessionId } = JSON.parse(body)
+        if (!contactId || !tag || !sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'contactId, tag, sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ ok: false })); return }
+        // Get current contact tags
+        const { data: contact } = await supabase.from('contacts').select('tags').eq('id', contactId).eq('company_id', companyId).limit(1)
+        if (!contact?.length) { res.writeHead(200); res.end(JSON.stringify({ ok: false, error: 'Contact not found' })); return }
+        var tags = contact[0].tags || []
+        if (add) { if (!tags.includes(tag)) tags.push(tag) }
+        else { tags = tags.filter(function(t) { return t !== tag }) }
+        await supabase.from('contacts').update({ tags }).eq('id', contactId).eq('company_id', companyId)
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, tags }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
   if (pathname === '/api-proxy' && req.method === 'POST') {
     let body = ''
     req.on('data', c => body += c)

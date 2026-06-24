@@ -1640,10 +1640,15 @@ function renderDisparoContactList() {
         tags = tags.filter(function(t) { return t !== _linkTagValue; });
       }
       try {
-        await apiPatch('contacts', c.id, { tags: tags });
-        c.tags = tags;
-        updated++;
-      } catch (e) { failed++; }
+        var tagResult = null
+        if (S._serverSessionId) {
+          var tagResp = await fetch(_wppServerUrl + '/link-tag', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contactId: c.id, tag: _linkTagValue, add: action === 'add', sessionId: S._serverSessionId }) })
+          if (tagResp.ok) tagResult = await tagResp.json()
+        } else {
+          tagResult = await apiPatch('contacts', c.id, { tags: tags });
+        }
+        if (tagResult) { c.tags = tags; updated++ } else { failed++ }
+      } catch (e) { failed++ }
     }
     result.style.display = '';
     result.innerHTML = '<div class="wc-disparo-result-msg ' + (failed === 0 ? 'success' : 'warning') + '">' +
