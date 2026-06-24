@@ -6,6 +6,8 @@ import fs from 'fs'
 import path from 'path'
 import http from 'http'
 import 'dotenv/config'
+import { parse } from 'csv-parse/sync'
+import * as XLSX from 'xlsx'
 
 globalThis.WebSocket = WebSocket
 const { createClient } = await import('@supabase/supabase-js')
@@ -14,6 +16,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
 const AUTH_BASE = './auth'
 const MEDIA_DIR = './media'
+const SPREADSHEETS_DIR = './spreadsheets'
 const PORT = 3123
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
@@ -21,6 +24,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { pers
 
 if (!fs.existsSync(AUTH_BASE)) fs.mkdirSync(AUTH_BASE, { recursive: true })
 if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true })
+if (!fs.existsSync(SPREADSHEETS_DIR)) fs.mkdirSync(SPREADSHEETS_DIR, { recursive: true })
 
 const sessions = new Map()
 
@@ -133,12 +137,22 @@ async function startSession(sessionId, userId, companyId) {
     entry.outgoingInterval = setInterval(async () => {
       if (!entry.sock) return
       try {
-        const { data: pending } = await supabase.from('whatsapp_messages').select('id,chat_id,text').eq('session_id', sessionId).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 120000).toISOString()).order('created_at', { ascending: true }).limit(20)
+        const { data: pending } = await supabase.from('whatsapp_messages').select('id,chat_id,text,media_url,message_type').eq('session_id', sessionId).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 120000).toISOString()).order('created_at', { ascending: true }).limit(20)
         if (!pending?.length) return
         for (const msg of pending) {
           const { data: chats } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', msg.chat_id).limit(1)
           const jid = chats?.[0]?.remote_jid; if (!jid) continue
-          await entry.sock.sendMessage(jid, { text: msg.text })
+          if (msg.message_type === 'image' && msg.media_url) {
+            const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
+            if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { image: fs.readFileSync(fp), caption: msg.text || '' }) }
+            else { await entry.sock.sendMessage(jid, { text: msg.text }) }
+          } else if (msg.message_type === 'audio' && msg.media_url) {
+            const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
+            if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { audio: fs.readFileSync(fp), mimetype: 'audio/ogg' }) }
+            else { await entry.sock.sendMessage(jid, { text: msg.text }) }
+          } else {
+            await entry.sock.sendMessage(jid, { text: msg.text })
+          }
           await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id)
         }
       } catch (e) { if (e.message?.includes('Connection closed')) { entry.sock = null; clearInterval(entry.outgoingInterval); entry.outgoingInterval = null } }
@@ -501,8 +515,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname.startsWith('/media/')) {
-    const fp = path.join(MEDIA_DIR, pathname.replace('/media/', '').replace(/[^a-zA-Z0-9\-_\.]/g, ''))
-    if (fs.existsSync(fp)) { const ext = path.extname(fp).toLowerCase(); const ct = ext === '.ogg' ? 'audio/ogg' : ext === '.jpg' ? 'image/jpeg' : 'application/octet-stream'; res.writeHead(200, { 'Content-Type': ct }); fs.createReadStream(fp).pipe(res) }
+    const fp = path.join(MEDIA_DIR, pathname.replace('/media/', '').replace(/[^a-zA-Z0-9\-_\.\/]/g, ''))
+    if (fs.existsSync(fp)) { const ext = path.extname(fp).toLowerCase(); const ct = ext === '.ogg' ? 'audio/ogg' : ext === '.jpg' ? 'image/jpeg' : ext === '.png' ? 'image/png' : 'application/octet-stream'; res.writeHead(200, { 'Content-Type': ct }); fs.createReadStream(fp).pipe(res) }
     else { res.writeHead(404); res.end('Not found') }
     return
   }
@@ -634,6 +648,147 @@ const server = http.createServer(async (req, res) => {
           await supabase.from('contacts').delete().eq('id', data.id).eq('company_id', companyId)
           res.writeHead(200); res.end(JSON.stringify({ ok: true }))
         } else { res.writeHead(400); res.end(JSON.stringify({ error: 'Unknown action' })) }
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  // ── Spreadsheet endpoints ──
+  if (pathname === '/upload-spreadsheet' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { name, content, sessionId } = JSON.parse(body)
+        if (!content || !sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'content and sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ error: 'No company' })); return }
+        const companyDir = path.join(SPREADSHEETS_DIR, companyId)
+        if (!fs.existsSync(companyDir)) fs.mkdirSync(companyDir, { recursive: true })
+        const fileId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+        const ext = name?.endsWith('.xlsx') ? '.xlsx' : '.csv'
+        const fp = path.join(companyDir, fileId + ext)
+        // Parse rows
+        let rows = []
+        if (ext === '.csv') {
+          const records = parse(content, { columns: true, skip_empty_lines: true, relax_column_count: true })
+          rows = records.map(r => ({ name: (r.nome || r.name || '').trim(), phone: normalizePhone(r.contato || r.phone || r.telefone || '') })).filter(r => r.phone && r.phone.length >= 10)
+        } else {
+          const wb = XLSX.read(content, { type: 'base64' })
+          const ws = wb.Sheets[wb.SheetNames[0]]
+          const data = XLSX.utils.sheet_to_json(ws)
+          rows = data.map(r => ({ name: (r.nome || r.name || '').toString().trim(), phone: normalizePhone((r.contato || r.phone || r.telefone || '').toString()) })).filter(r => r.phone && r.phone.length >= 10)
+        }
+        // Save metadata
+        const meta = { fileId, name: name || fileId, ext, rowCount: rows.length, createdAt: new Date().toISOString() }
+        fs.writeFileSync(fp, JSON.stringify({ meta, rows }))
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, ...meta }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/list-spreadsheets') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(200); res.end(JSON.stringify({ files: [] })); return }
+    const companyId = await getCompanyId(sid)
+    if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ files: [] })); return }
+    const companyDir = path.join(SPREADSHEETS_DIR, companyId)
+    const files = []
+    if (fs.existsSync(companyDir)) {
+      for (const f of fs.readdirSync(companyDir)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(path.join(companyDir, f), 'utf-8'))
+          if (data.meta) files.push(data.meta)
+        } catch (e) {}
+      }
+    }
+    files.sort((a, b) => b.createdAt?.localeCompare(a.createdAt || ''))
+    res.writeHead(200); res.end(JSON.stringify({ files })); return
+  }
+
+  if (pathname === '/delete-spreadsheet' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { fileId, sessionId } = JSON.parse(body)
+        if (!fileId || !sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'fileId and sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ ok: false })); return }
+        const companyDir = path.join(SPREADSHEETS_DIR, companyId)
+        if (fs.existsSync(companyDir)) {
+          for (const f of fs.readdirSync(companyDir)) {
+            if (f.startsWith(fileId)) { fs.unlinkSync(path.join(companyDir, f)); break }
+          }
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/upload-media' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { data, ext, sessionId } = JSON.parse(body)
+        if (!data || !sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'data and sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ mediaUrl: null })); return }
+        const companyMediaDir = path.join(MEDIA_DIR, companyId)
+        if (!fs.existsSync(companyMediaDir)) fs.mkdirSync(companyMediaDir, { recursive: true })
+        const fileId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + '.' + (ext || 'jpg')
+        const fp = path.join(companyMediaDir, fileId)
+        fs.writeFileSync(fp, Buffer.from(data, 'base64'))
+        const mediaUrl = '/media/' + companyId + '/' + fileId
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, mediaUrl }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/send-spreadsheet-disparo' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { fileId, text, mediaUrl, messageType, sessionId } = JSON.parse(body)
+        if (!fileId || !text || !sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'fileId, text, sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ sent: 0, failed: 0 })); return }
+        // Read spreadsheet
+        const companyDir = path.join(SPREADSHEETS_DIR, companyId)
+        let rows = []
+        if (fs.existsSync(companyDir)) {
+          for (const f of fs.readdirSync(companyDir)) {
+            if (f.startsWith(fileId)) {
+              const data = JSON.parse(fs.readFileSync(path.join(companyDir, f), 'utf-8'))
+              rows = data.rows || []; break
+            }
+          }
+        }
+        let sent = 0, failed = 0
+        for (const row of rows) {
+          try {
+            const personalized = text.replace(/\{nome\}/g, row.name)
+            const jid = '55' + row.phone + '@s.whatsapp.net'
+            // Find or create chat
+            let chatId = null
+            const ec = await findChat(jid, sessionId)
+            if (ec) { chatId = ec.id } else {
+              const r = await supabase.from('whatsapp_chats').insert({ remote_jid: jid, contact_name: row.name || row.phone, session_id: sessionId }).select().single()
+              if (r.data) chatId = r.data.id
+            }
+            if (!chatId) { failed++; continue }
+            // Insert message with optional media
+            const mp = { chat_id: chatId, session_id: sessionId, text: personalized.substring(0, 500), direction: 'sent', created_at: new Date().toISOString() }
+            if (mediaUrl) { mp.media_url = mediaUrl; mp.message_type = messageType || 'image' }
+            await supabase.from('whatsapp_messages').insert(mp); sent++
+          } catch (e) { failed++ }
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, sent, failed, total: rows.length }))
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
     return
