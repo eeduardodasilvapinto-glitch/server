@@ -11673,9 +11673,11 @@
                 });
             }
 
-            function openSettings() { document.getElementById('settingsOverlay').classList.add('visible'); loadSettings(); }
+            function openSettings() { var el = document.getElementById('settingsOverlay'); if (!el) return; el.style.display = 'flex'; el.classList.add('visible'); try { loadSettings(); } catch(e) { console.warn('loadSettings error', e) } }
             function closeSettings() {
-                document.getElementById('settingsOverlay').style.display = 'none';
+                var el = document.getElementById('settingsOverlay'); if (!el) return;
+                el.style.display = 'none';
+                el.classList.remove('visible');
                 if (_lastTab) switchTab(_lastTab);
             }
             function toggleCollapsible(id) {
@@ -12344,7 +12346,9 @@
                 }
             }
             function closeChatConfig() {
-                document.getElementById('chatConfigOverlay').style.display = 'none';
+                var el = document.getElementById('chatConfigOverlay'); if (!el) return;
+                el.style.display = 'none';
+                el.classList.remove('open');
                 if (_lastTab) switchTab(_lastTab);
             }
 
