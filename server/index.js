@@ -248,7 +248,20 @@ async function startSession(sessionId, userId, companyId) {
       if (normalizePhone(phone).length >= 14) continue
       const name = typeof c.name === 'string' ? c.name : (typeof c.notify === 'string' ? c.notify : phone)
       const ex = await findContactByNameOrPhone(phone, name, companyId)
-      if (ex) { await supabase.from('contacts').update({ name, phone: normalizePhone(phone) }).eq('id', ex.id) }
+      if (ex) {
+        await supabase.from('contacts').update({ name, phone: normalizePhone(phone) }).eq('id', ex.id)
+        // Also update chat name if contact has a real saved name
+        if (c.name && c.name !== phone) {
+          const np = normalizePhone(phone)
+          const { data: chats } = await supabase.from('whatsapp_chats').select('id,contact_name').eq('session_id', sessionId)
+          if (chats) for (const ch of chats) {
+            const chNp = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+            if (chNp === np && ch.contact_name !== c.name) {
+              await supabase.from('whatsapp_chats').update({ contact_name: c.name }).eq('id', ch.id)
+            }
+          }
+        }
+      }
       else { const p = { name, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }; if (companyId) p.company_id = companyId; await supabase.from('contacts').insert(p) }
     }
   })
@@ -778,6 +791,27 @@ const server = http.createServer(async (req, res) => {
             await supabase.from('whatsapp_chats').update({ remote_jid: correctJid2 }).eq('id', ch.id); fixed++
           }
         }
+      }
+    }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, fixed })); return
+  }
+
+  if (pathname === '/fix-contact-names') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const companyId = await getCompanyId(sid)
+    const { data: companySessions } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', companyId)
+    const sids = [sid, ...(companySessions || []).map(function(s){ return s.id }).filter(function(id){ return id !== sid })]
+    const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name,contact_id').in('session_id', sids)
+    const { data: contacts } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId)
+    const byNp = {}
+    if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); if (np && c.name && !/^\d+$/.test(c.name)) byNp[np] = c.name }
+    let fixed = 0
+    if (chats) for (const ch of chats) {
+      const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+      if (np && byNp[np] && byNp[np] !== ch.contact_name) {
+        await supabase.from('whatsapp_chats').update({ contact_name: byNp[np] }).eq('id', ch.id)
+        fixed++
       }
     }
     res.writeHead(200); res.end(JSON.stringify({ ok: true, fixed })); return
