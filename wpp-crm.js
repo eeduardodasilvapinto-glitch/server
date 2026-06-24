@@ -700,24 +700,40 @@ window.VeltrisWPP = (() => {
     if (S.messages.length > 0) console.log('Primeira msg:', S.messages[0]?.text?.substring(0,30), '| Ultima msg:', S.messages[S.messages.length-1]?.text?.substring(0,30));
   }
 
-  async function sendMessage() {
+  async function sendMessage(fileInput) {
     const input = el('wcMessageInput');
-    if (!input || !input.value.trim() || !S.activeChatId || !S.activeSessionId) return;
-    const text = input.value.trim();
-    input.value = '';
+    var text = (input?.value || '').trim();
+    var file = fileInput?.files?.[0] || null;
+    if (!text && !file) return;
+    if (!S.activeChatId || !S.activeSessionId) return;
+    if (file) fileInput.value = '';
+    else if (input) input.value = '';
+    // If has file, upload first
+    var mediaUrl = null, messageType = null
+    if (file) {
+      var reader = new FileReader()
+      try {
+        var base64 = await new Promise(function(resolve, reject) { reader.onload = function(e) { var b = e.target.result.split(',')[1] || e.target.result; resolve(b) }; reader.onerror = reject; reader.readAsDataURL(file) })
+        var ext = file.name.split('.').pop().toLowerCase()
+        var r = await fetch(_wppServerUrl + '/upload-media', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: base64, ext, sessionId: S._serverSessionId }) })
+        if (r.ok) { var d = await r.json(); mediaUrl = d.mediaUrl; messageType = ext === 'png' ? 'image' : 'image' }
+      } catch (e) { alert('Erro ao enviar imagem: ' + e.message); return }
+    }
     // Optimistic
     var tempId = 'temp_' + Date.now()
-    var tempMsg = { id: tempId, text, direction: 'sent', created_at: new Date().toISOString(), chat_id: S.activeChatId };
+    var tempMsg = { id: tempId, text: text || (mediaUrl ? '📷 Foto' : ''), direction: 'sent', created_at: new Date().toISOString(), chat_id: S.activeChatId, media_url: mediaUrl, message_type: messageType };
     S.messages.push(tempMsg);
     renderMessages();
     // Send via server
     var sentOk = false
     if (S._serverSessionId) {
       try {
+        var body = { chatId: S.activeChatId, text: text || '', sessionId: S._serverSessionId }
+        if (mediaUrl) { body.mediaUrl = mediaUrl; body.messageType = messageType }
         var r = await fetch(_wppServerUrl + '/send-message', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId: S.activeChatId, text: text, sessionId: S._serverSessionId })
+          body: JSON.stringify(body)
         })
         sentOk = r.ok
       } catch (e) {}
@@ -731,10 +747,7 @@ window.VeltrisWPP = (() => {
           break
         }
       }
-      // Load real messages from server to ensure they persist
-      setTimeout(function() {
-        loadMessages(S.activeChatId)
-      }, 3000)
+      setTimeout(function() { loadMessages(S.activeChatId) }, 3000)
     }
   }
 
@@ -2702,6 +2715,8 @@ function renderDisparoContactList() {
         <div class="wc-messages" id="wcMessages"></div>
         <div class="wc-input-area" id="wcInputArea" style="display:none">
           <textarea id="wcMessageInput" placeholder="Digite sua mensagem..." rows="2" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();VeltrisWPP.sendMessage()}"></textarea>
+          <button class="wc-attach-btn" onclick="document.getElementById('wcAttachInput').click()" title="Anexar imagem"><i class="fi fi-rr-picture"></i></button>
+          <input type="file" id="wcAttachInput" accept=".jpg,.jpeg,.png" style="display:none" onchange="VeltrisWPP.sendMessage(this)" />
           <button onclick="VeltrisWPP.sendMessage()">Enviar</button>
         </div>
       </div>`;
