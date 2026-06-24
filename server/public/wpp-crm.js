@@ -1768,19 +1768,22 @@ function renderDisparoContactList() {
     const container = el('wppClientes');
     if (!container) return;
     container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.85rem">Carregando contatos...</div>';
-    if (S._serverSessionId) {
-      try {
-        var resp = await fetch(_wppServerUrl + '/db-contacts?sessionId=' + encodeURIComponent(S._serverSessionId))
+    try {
+      var params = []
+      if (S._serverSessionId) params.push('sessionId=' + encodeURIComponent(S._serverSessionId))
+      else {
+        var compId = (typeof window._companyMode !== 'undefined' && window._companyMode) ? window._companyMode.id : null
+        if (compId) params.push('companyId=' + encodeURIComponent(compId))
+      }
+      if (params.length) {
+        var resp = await fetch(_wppServerUrl + '/db-contacts?' + params.join('&'))
         if (resp.ok) {
           var data = await resp.json()
           S.leads = data.contacts || []
-          console.log('renderClientes: loaded', S.leads.length, 'contacts')
-        } else {
-          console.warn('renderClientes: fetch failed', resp.status)
         }
-      } catch (e) { console.warn('renderClientes: error', e) }
-    }
-    if (!S.leads || !S.leads.length) { console.warn('renderClientes: fallback to apiGet'); S.leads = await apiGet('contacts', {}); }
+      }
+    } catch (e) { console.warn('renderClientes: error', e) }
+    if (!S.leads) S.leads = []
     const actionsData = await apiGet('cadence_actions', { order: 'scheduled_at.desc' });
     S.cadence_actions = Array.isArray(actionsData) ? actionsData : [];
     const list = Array.isArray(S.leads) ? S.leads : [];
