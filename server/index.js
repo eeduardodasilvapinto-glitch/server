@@ -569,6 +569,7 @@ const server = http.createServer(async (req, res) => {
           if (params?.filters) for (const [k, v] of Object.entries(params.filters)) if (k !== 'company_id') q = q.eq(k, v)
           await q; res.writeHead(200); res.end(JSON.stringify({ data: [] }))
         } else if (operation === 'manageLeads') {
+          if (!companyId) { res.writeHead(200); res.end(JSON.stringify([])); return }
           const { action, data } = reqBody || {}
           if (action === 'list') {
             const { data: leads } = await supabase.from('contacts').select('*').eq('company_id', companyId)
