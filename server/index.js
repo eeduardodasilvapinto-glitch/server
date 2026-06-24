@@ -460,6 +460,29 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, removed })); return
   }
 
+  if (pathname === '/test-jid' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { chatId, newJid, sessionId } = JSON.parse(body)
+        if (!chatId || !newJid || !sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'chatId, newJid, sessionId required' })); return }
+        await supabase.from('whatsapp_chats').update({ remote_jid: newJid }).eq('id', chatId).eq('session_id', sessionId)
+        // Try sending directly
+        const entry = sessions.get(sessionId)
+        var sendResult = 'not_attempted'
+        if (entry?.sock) {
+          try {
+            await entry.sock.sendMessage(newJid, { text: 'teste jid ' + newJid })
+            sendResult = 'ok'
+          } catch (e) { sendResult = 'error: ' + e.message }
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, sendResult }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
   if (pathname === '/diagnose') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
