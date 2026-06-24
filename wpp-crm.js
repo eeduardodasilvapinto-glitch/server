@@ -2850,6 +2850,7 @@ function renderDisparoContactList() {
       console.log('Tags saved:', _savedTags)
       console.log('Disparo tag value:', _disparoTagValue)
       console.log('Contacts sample:', _disparoContacts.slice(0, 5).map(function(c){ return { name: c.name, tags: c.tags, phone: c.phone } }))
+      console.log('Contacts with tag:', _disparoContacts.filter(function(c){ var t = c.tags || []; return t.some(function(tag){ return tag.toLowerCase() === (_disparoTagValue || '').toLowerCase() }) }).map(function(c){ return { name: c.name, tags: c.tags } }))
       console.log('Filtered count:', getDisparoContacts().length)
     },
     backToChatList,
