@@ -395,7 +395,7 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/db-contacts') {
     const sid = url.searchParams.get('sessionId'); const companyId = sid ? await getCompanyId(sid) : null
-    let q = supabase.from('contacts').select('name,phone')
+    let q = supabase.from('contacts').select('id,name,phone,tags')
     if (companyId) q = q.eq('company_id', companyId)
     const { data: all } = await q
     const filtered = (all || []).filter(c => c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x'))
