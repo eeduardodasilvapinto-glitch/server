@@ -586,6 +586,7 @@ const server = http.createServer(async (req, res) => {
             if (chatRow?.length) {
               await sendEntry.sock.sendMessage(chatRow[0].remote_jid, { text: d.text.substring(0, 500) })
               await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', inserted[0].id)
+              await supabase.from('whatsapp_chats').update({ last_message: { text: d.text.substring(0, 200), at: new Date().toISOString() }, last_message_at: new Date().toISOString() }).eq('id', chatId)
             }
           } catch (e) {
             // Leave as 'sent' for pump to retry
