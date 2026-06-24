@@ -554,7 +554,7 @@
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 100px;
-  padding: 7px 12px;
+  padding: 8px 14px;
   font-size: 0.75rem;
   color: var(--text);
   cursor: pointer;
