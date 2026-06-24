@@ -166,6 +166,7 @@
 .wc-chat-info { flex: 1; min-width: 0; }
 .wc-chat-name { font-size: 0.92rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wc-chat-preview { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wc-chat-phone { font-size: 0.72rem; color: var(--text-dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wc-chat-meta { text-align: right; flex-shrink: 0; }
 .wc-chat-time { font-size: 0.6rem; color: var(--text-muted); }
 .wc-chat-unread { background: var(--accent); color: #fff; font-size: 0.55rem; font-weight: 700; padding: 1px 6px; border-radius: 100px; min-width: 18px; text-align: center; display: inline-block; margin-top: 2px; }

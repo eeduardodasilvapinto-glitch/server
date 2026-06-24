@@ -564,6 +564,7 @@ window.VeltrisWPP = (() => {
         <div class="wc-avatar">${initials(name)}</div>
         <div class="wc-chat-info">
           <div class="wc-chat-name">${escHtml(name)}</div>
+          <div class="wc-chat-phone">${escHtml(c.contact_phone || phone || '')}</div>
           <div class="wc-chat-preview">${escHtml(lastMsg.substring(0, 60))}</div>
         </div>
         <div class="wc-chat-meta">
