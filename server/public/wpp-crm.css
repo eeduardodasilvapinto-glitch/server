@@ -548,6 +548,7 @@
 .wc-lead-toolbar input:focus,
 .wc-lead-toolbar select:focus { border-color: var(--accent); }
 .wc-lead-toolbar > * { flex: 1; }
+.wc-lead-toolbar input { flex: 2; min-width: 180px; }
 .wc-lead-toolbar .btn { flex: 0 0 auto; }
 .wc-lead-toolbar .cs-wrap { position: relative; flex: 0 0 auto; min-width: 0; }
 .wc-lead-toolbar .cs-wrap .cs-trigger {
