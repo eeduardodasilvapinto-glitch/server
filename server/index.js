@@ -573,16 +573,17 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  res.writeHead(404); res.end('Not found')
-
-  // Try static files from public/ as fallback
+  // Try static files from public/ fallback
   const publicDir = path.join(process.cwd(), 'public')
-  let fp = path.join(publicDir, pathname === '/' ? 'index.html' : pathname.substring(1))
-  if (fp.startsWith(publicDir) && fs.existsSync(fp) && !fs.statSync(fp).isDirectory()) {
-    const ext = path.extname(fp).toLowerCase(); const ct = { '.html':'text/html','.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png' }
-    res.writeHead(200, { 'Content-Type': ct[ext] || 'application/octet-stream' }); fs.createReadStream(fp).pipe(res)
-    return
+  if (req.method === 'GET') {
+    let fp = path.join(publicDir, pathname === '/' ? 'index.html' : pathname.substring(1))
+    if (fp.startsWith(publicDir) && fs.existsSync(fp) && !fs.statSync(fp).isDirectory()) {
+      const ext = path.extname(fp).toLowerCase(); const ct = { '.html':'text/html','.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png' }
+      res.writeHead(200, { 'Content-Type': ct[ext] || 'application/octet-stream' }); fs.createReadStream(fp).pipe(res); return
+    }
   }
+
+  res.writeHead(404); res.end('Not found')
 })
 
 server.listen(PORT, () => logger.info({ port: PORT }, 'Listening'))
