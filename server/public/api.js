@@ -6,8 +6,10 @@
   var SUPABASE_ANON_KEY = 'sb_publishable_gsf7GLZd9jqL-r_MuQQcuw_g9CONjKt';
   // ──────────────────────────────────────────────────
 
-  var PROXY_ACTIVE = true;
-  var FUNCTIONS_URL = 'https://server-production-d7c0.up.railway.app';
+  var PROXY_ACTIVE = typeof window !== 'undefined' && window.location.origin && window.location.origin.indexOf('vercel.app') >= 0;
+  var VERCEL_API = window.location.origin + '/api';
+  var FUNCTIONS_URL = PROXY_ACTIVE ? VERCEL_API : SUPABASE_URL + '/functions/v1';
+  var RAILWAY_URL = 'https://server-production-d7c0.up.railway.app';
   var REST_URL = SUPABASE_URL + '/rest/v1';
 
   var TOKEN_KEY = 'aureoon_token';
@@ -124,7 +126,7 @@
       var sid = null;
       try { sid = window.VeltrisWPP && window.VeltrisWPP.getServerSessionId ? window.VeltrisWPP.getServerSessionId() : null; } catch (e) {}
       var h = { 'Content-Type': 'application/json' };
-      var fetchUrl = FUNCTIONS_URL + '/api-proxy';
+      var fetchUrl = RAILWAY_URL + '/api-proxy';
       if (sid) fetchUrl += '?sessionId=' + encodeURIComponent(sid);
       var res = await fetch(fetchUrl, {
         method: 'POST',
