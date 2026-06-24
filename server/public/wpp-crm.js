@@ -1637,7 +1637,7 @@ window.VeltrisWPP = (() => {
     const list = Array.isArray(S.leads) ? S.leads : [];
     container.innerHTML = `
       <div class="wc-lead-toolbar">
-        <input id="wcLeadSearch" placeholder="Buscar cliente..." oninput="VeltrisWPP.filterLeads()" />
+        <input id="wcLeadSearch" placeholder="Buscar cliente..." style="padding:12px 18px" oninput="VeltrisWPP.filterLeads()" />
         <div class="cs-wrap" style="position:relative">
           <div class="cs-trigger" id="wcStageTrigger" onclick="VeltrisWPP.toggleStageDropdown(event)">
             <span id="wcStageSelected">Estágios</span>
