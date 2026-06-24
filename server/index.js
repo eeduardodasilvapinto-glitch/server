@@ -27,6 +27,7 @@ if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true })
 if (!fs.existsSync(SPREADSHEETS_DIR)) fs.mkdirSync(SPREADSHEETS_DIR, { recursive: true })
 
 const sessions = new Map()
+let msgUpsertCount = 0, msgSkippedNoMsg = 0, msgSkippedGroup = 0, msgSkippedLid = 0, msgSkippedNoText = 0, msgProcessed = 0
 
 function normalizePhone(raw) {
   if (!raw) return ''
@@ -208,7 +209,7 @@ async function startSession(sessionId, userId, companyId) {
         let cid = null; const exC = await findContactByPhone(phone, companyId)
         if (exC) { cid = exC.id } else { const p = { name: cn, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }; if (companyId) p.company_id = companyId; const r = await supabase.from('contacts').insert(p).select().single(); if (r.data) cid = r.data.id }
         const exChat = await findChat(jid, sessionId)
-        if (!exChat) { await supabase.from('whatsapp_chats').insert({ remote_jid: jid, contact_id: cid, contact_name: cn, last_message_at: chat.conversationTimestamp ? new Date(chat.conversationTimestamp * 1000).toISOString() : null, session_id: sessionId }) }
+        if (!exChat) { const cp = { remote_jid: jid, contact_id: cid, contact_name: cn, last_message_at: chat.conversationTimestamp ? new Date(chat.conversationTimestamp * 1000).toISOString() : null, session_id: sessionId }; if (companyId) cp.company_id = companyId; await supabase.from('whatsapp_chats').insert(cp) }
       }
     }
     if (messages) {
@@ -246,17 +247,21 @@ async function startSession(sessionId, userId, companyId) {
   })
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    msgUpsertCount++
     if (type !== 'notify') return
     for (const msg of messages) {
       try {
-        if (!msg.message) continue; const jid = msg.key.remoteJid
-        if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter')) continue
-        const mp = jid.split('@')[0]; if (normalizePhone(mp).length >= 14) continue
+        if (!msg.message) { msgSkippedNoMsg++; continue }
+        const jid = msg.key.remoteJid
+        if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter')) { msgSkippedGroup++; continue }
+        const mp = jid.split('@')[0]; const np = normalizePhone(mp)
+        if (np.length >= 14) { msgSkippedLid++; continue }
         let mediaUrl = null, mType = 'text'
         if (msg.message?.audioMessage) { mType = 'audio'; try { const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) }); if (buf) { const fn = sessionId + '_' + msg.key.id + '.ogg'; fs.writeFileSync(path.join(MEDIA_DIR, fn), buf); mediaUrl = '/media/' + fn } } catch (e) {} }
         if (msg.message?.imageMessage) { mType = 'image'; try { const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) }); if (buf) { const fn = sessionId + '_' + msg.key.id + '.jpg'; fs.writeFileSync(path.join(MEDIA_DIR, fn), buf); mediaUrl = '/media/' + fn } } catch (e) {} }
         const txt = mType === 'audio' ? 'Audio' : mType === 'image' ? 'Foto' : msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || ''
-        if (!txt && !mediaUrl) continue; const phone = jid.split('@')[0]
+        if (!txt && !mediaUrl) { msgSkippedNoText++; continue }
+        const phone = jid.split('@')[0]
         if (normalizePhone(phone).length >= 14) continue
         const pn = msg.pushName || phone; const labelN = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho']
         const clean = pn.toLowerCase().trim(); const dn = (clean.length < 3 || labelN.includes(clean)) ? phone : pn
@@ -278,6 +283,7 @@ async function startSession(sessionId, userId, companyId) {
             const mp2 = { chat_id: chatId, session_id: sessionId, text: txt, direction: dir, created_at: new Date(msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()).toISOString() }
             if (mediaUrl) { mp2.media_url = mediaUrl; mp2.message_type = mType }
             await supabase.from('whatsapp_messages').insert(mp2); trimMessages(chatId)
+            msgProcessed++
           }
         }
       } catch (e) { logger.error({ sessionId, error: e.message }, 'Msg error') }
@@ -364,6 +370,10 @@ const server = http.createServer(async (req, res) => {
     await supabase.from('whatsapp_sessions').update({ status: 'disconnected' }).eq('id', sid)
     const e = sessions.get(sid); if (e) { if (e.sock) try { e.sock.logout() } catch {}; e.sock = null; sessions.delete(sid) }
     res.writeHead(200); res.end(JSON.stringify({ ok: true })); return
+  }
+
+  if (pathname === '/msg-stats') {
+    res.writeHead(200); res.end(JSON.stringify({ msgUpsertCount, msgSkippedNoMsg, msgSkippedGroup, msgSkippedLid, msgSkippedNoText, msgProcessed })); return
   }
 
   if (pathname === '/contacts') {
