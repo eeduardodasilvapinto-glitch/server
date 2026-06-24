@@ -612,6 +612,15 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, updated: total, company_id: targetCid })); return
   }
 
+  if (pathname === '/fix-jids') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid').eq('session_id', sid)
+    let fixed = 0
+    if (chats) { for (const ch of chats) { const part = ch.remote_jid?.split('@')[0] || ''; const np = normalizePhone(part); if (np && np.length === 11 && ch.remote_jid !== '55' + np + '@s.whatsapp.net') { const correctJid = '55' + np + '@s.whatsapp.net'; await supabase.from('whatsapp_chats').update({ remote_jid: correctJid }).eq('id', ch.id); fixed++ } } }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, fixed })); return
+  }
+
   if (pathname === '/list-tags') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(200); res.end(JSON.stringify({ tags: [] })); return }
