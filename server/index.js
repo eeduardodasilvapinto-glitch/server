@@ -546,6 +546,12 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (pathname === '/debug') {
+    const { data: mData } = await supabase.from('whatsapp_messages').select('id').limit(50000)
+    const { data: cData } = await supabase.from('whatsapp_chats').select('id').limit(50000)
+    res.writeHead(200); res.end(JSON.stringify({ chats: cData?.length || 0, messages: mData?.length || 0 })); return
+  }
+
   if (pathname === '/diag') {
     const tables = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
     const result = {}
