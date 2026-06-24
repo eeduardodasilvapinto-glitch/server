@@ -11672,7 +11672,7 @@
                 });
             }
 
-            function openSettings() { var el = document.getElementById('settingsOverlay'); el.style.display = ''; el.classList.add('visible'); loadSettings(); }
+            function openSettings() { var el = document.getElementById('settingsOverlay'); el.style.display = ''; el.classList.add('visible'); try { loadSettings(); } catch(e) { console.warn('loadSettings error', e) } }
             function closeSettings() {
                 var el = document.getElementById('settingsOverlay');
                 el.classList.remove('visible');
@@ -12345,7 +12345,9 @@
                 }
             }
             function closeChatConfig() {
-                document.getElementById('chatConfigOverlay').style.display = 'none';
+                var el = document.getElementById('chatConfigOverlay');
+                el.classList.remove('open');
+                el.style.display = '';
                 if (_lastTab) switchTab(_lastTab);
             }
 
