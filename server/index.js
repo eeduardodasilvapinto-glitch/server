@@ -677,8 +677,16 @@ const server = http.createServer(async (req, res) => {
           for (var i = 0; i < entries.length; i++) {
             var k = entries[i][0].toLowerCase().replace(/[^a-z0-9]/g, '')
             var v = (entries[i][1] || '').toString().trim()
-            if (k === 'nome' || k === 'name' || k === 'nomedocliente') name = v
-            else if (k === 'contato' || k === 'phone' || k === 'telefone' || k === 'celular' || k === 'numero' || k === 'numero') phone = v
+            if (k === 'nome' || k === 'name' || k === 'nomedocliente' || k === 'cliente' || k === 'contato' && !phone) name = v
+            else if (k === 'contato' || k === 'phone' || k === 'telefone' || k === 'celular' || k === 'numero' || k === 'whatsapp' || k === 'tel' || k === 'fone' || k === 'movel') phone = v
+          }
+          // Fallback: try to detect columns by content
+          if (!phone && entries.length <= 3) {
+            var phoneCandidates = entries.filter(function(e) { return normalizePhone(e[1]) && normalizePhone(e[1]).length >= 10 })
+            if (phoneCandidates.length === 1) {
+              phone = phoneCandidates[0][1]
+              if (!name) name = entries.filter(function(e) { return e[0] !== phoneCandidates[0][0] })[0]?.[1] || ''
+            }
           }
           return { name, phone: normalizePhone(phone) }
         }
