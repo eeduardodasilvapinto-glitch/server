@@ -546,7 +546,7 @@ const server = http.createServer(async (req, res) => {
         const { operation, table, params, body: reqBody } = JSON.parse(body)
         const sid = params?.sessionId || url.searchParams.get('sessionId')
         const companyId = sid ? await getCompanyId(sid) : null
-        logger.info({ operation, table, sid, companyId, filters: params?.filters }, 'API proxy request')
+        logger.info('Proxy: ' + operation + ' ' + table + ' sid=' + (sid || 'null') + ' cid=' + (companyId || 'null') + ' filters=' + JSON.stringify(params?.filters || {}))
         const scoped = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
         if (scoped.includes(table) && !companyId) { res.writeHead(200); res.end(JSON.stringify({ data: [] })); return }
         if (operation === 'select') {
