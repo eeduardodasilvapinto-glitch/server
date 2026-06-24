@@ -568,6 +568,23 @@ const server = http.createServer(async (req, res) => {
           let q = supabase.from(table).delete().eq('company_id', companyId)
           if (params?.filters) for (const [k, v] of Object.entries(params.filters)) if (k !== 'company_id') q = q.eq(k, v)
           await q; res.writeHead(200); res.end(JSON.stringify({ data: [] }))
+        } else if (operation === 'manageLeads') {
+          const { action, data } = reqBody || {}
+          if (action === 'list') {
+            const { data: leads } = await supabase.from('contacts').select('*').eq('company_id', companyId)
+            res.writeHead(200); res.end(JSON.stringify(leads || []))
+          } else if (action === 'create') {
+            const r = await supabase.from('contacts').insert(Object.assign({}, data, { company_id: companyId, source: 'manual' })).select().single()
+            res.writeHead(200); res.end(JSON.stringify(r.data || {}))
+          } else if (action === 'update') {
+            await supabase.from('contacts').update(data).eq('id', data.id).eq('company_id', companyId)
+            res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+          } else if (action === 'delete') {
+            await supabase.from('contacts').delete().eq('id', data.id).eq('company_id', companyId)
+            res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+          } else {
+            res.writeHead(400); res.end(JSON.stringify({ error: 'Unknown action' }))
+          }
         } else { res.writeHead(400); res.end(JSON.stringify({ error: 'Unknown operation' })) }
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
