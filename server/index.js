@@ -700,9 +700,28 @@ const server = http.createServer(async (req, res) => {
         } else {
           const wb = XLSX.read(content, { type: 'base64' })
           const ws = wb.Sheets[wb.SheetNames[0]]
-          const data = XLSX.utils.sheet_to_json(ws)
+          const rawData = XLSX.utils.sheet_to_json(ws, { header: 1 }).filter(function(row){ return row.some(function(cell){ return cell !== undefined && cell !== null && cell !== '' }) })
+          // Check if first row looks like headers (contains known column names)
+          var firstRow = rawData[0] || []
+          var hasHeaders = firstRow.some(function(cell) { var s = String(cell).toLowerCase().replace(/[^a-z0-9]/g, ''); return ['nome','name','contato','phone','telefone','celular','numero','whatsapp','cliente'].includes(s) })
+          var data
+          if (hasHeaders) {
+            // Use first row as headers
+            data = rawData.slice(1).map(function(row) {
+              var obj = {}
+              for (var i = 0; i < firstRow.length; i++) obj[String(firstRow[i])] = row[i]
+              return obj
+            })
+          } else {
+            // No headers - try to auto-detect columns (first column = name, second = phone)
+            data = rawData.map(function(row) {
+              var obj = {}
+              if (row.length >= 2) { obj['nome'] = String(row[0] ?? ''); obj['contato'] = String(row[1] ?? '') }
+              else obj['contato'] = String(row[0] ?? '')
+              return obj
+            })
+          }
           rows = data.map(extractRow).filter(r => r.phone && r.phone.length >= 2)
-          if (rows.length < data.length) logger.info({ sessionId, total: data.length, valid: rows.length, skipped: data.map(extractRow).filter(r => !r.phone || r.phone.length < 2).slice(0, 3) }, 'XLSX row filter')
         }
         // Save metadata
         const meta = { fileId, name: name || fileId, ext, rowCount: rows.length, createdAt: new Date().toISOString() }
