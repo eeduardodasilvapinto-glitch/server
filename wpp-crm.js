@@ -1646,6 +1646,8 @@ function renderDisparoContactList() {
       (failed > 0 ? ', <strong>' + failed + '</strong> falha(s)' : ' com sucesso') +
       '</div>';
     renderLinkContactList();
+    renderSavedTags();
+    window._linkSelectedContacts = {};
   }
 
   /* ============================ CLIENTES TABLE ============================ */
