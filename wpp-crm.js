@@ -1648,6 +1648,12 @@ window.VeltrisWPP = (() => {
     return actions[0].scheduled_at || null;
   }
 
+  function shortName(name) {
+    if (!name) return '—'
+    var parts = name.trim().split(/\s+/)
+    return parts.slice(0, 2).join(' ')
+  }
+
   function renderClientesRows(leads) {
     if (leads.length === 0) return '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px">Nenhum cliente encontrado</td></tr>';
     return leads.map(l => {
@@ -1656,8 +1662,7 @@ window.VeltrisWPP = (() => {
       return `
       <tr style="cursor:pointer;text-align:center" onclick="var bar=document.getElementById('wcBulkBar');if(bar&&bar.style.display!=='none'){var cb=this.querySelector('.wc-bulk-cb');if(cb){cb.checked=!cb.checked;VeltrisWPP.updateBulkCount()}}else{VeltrisWPP.selectLead('${l.id}')}">
         <td style="text-align:center"><input type="checkbox" class="wc-bulk-cb" data-id="${l.id}" ${isSelected?'checked':''} onchange="VeltrisWPP.updateBulkCount()" style="accent-color:var(--accent)" onclick="event.stopPropagation()" /></td>
-        <td style="text-align:center"><strong>${escHtml(l.name || '—')}</strong></td>
-        <td style="text-align:center">${escHtml(l.phone || '—')}</td>
+        <td style="text-align:center"><strong>${escHtml(shortName(l.name))}</strong></td>
         <td style="text-align:center"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${stageColor(l.stage)};margin-right:6px;vertical-align:middle"></span>${stageLabel(l.stage)}</td>
         <td style="text-align:center">${l.last_contacted_at ? formatFullDate(l.last_contacted_at) : '—'}</td>
         <td style="text-align:center">${lastAction ? formatFullDate(lastAction) : '—'}</td>
