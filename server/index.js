@@ -551,7 +551,9 @@ const server = http.createServer(async (req, res) => {
         const entry = sessions.get(sessionId)
         if (!entry || entry.status !== 'connected') { res.writeHead(200); res.end(JSON.stringify([])); return }
         if (action === 'list') {
-          const { data: leads } = await supabase.from('contacts').select('*').eq('company_id', companyId)
+          let q = supabase.from('contacts').select('*').eq('company_id', companyId)
+          if (data?.excludeWhatsApp) q = q.neq('source', 'whatsapp')
+          const { data: leads } = await q
           res.writeHead(200); res.end(JSON.stringify(leads || []))
         } else if (action === 'create') {
           const r = await supabase.from('contacts').insert(Object.assign({}, data, { company_id: companyId, source: 'manual' })).select().single()

@@ -506,7 +506,7 @@
     },
 
     listLeads: function () {
-      return this._manageLeads({ action: 'list', data: {} });
+      return this._manageLeads({ action: 'list', data: { excludeWhatsApp: true } });
     },
 
     createLead: function (data) {
