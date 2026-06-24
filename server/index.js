@@ -563,6 +563,15 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ hasSocket: !!entry?.sock, pumpRunning: !!entry?.outgoingInterval, sessionStatus: entry?.status, recentMessages: recent || [], pendingSentCount: sent?.length || 0 })); return
   }
 
+  if (pathname === '/check-chat') {
+    const cid = url.searchParams.get('chatId')
+    if (!cid) { res.writeHead(400); res.end(JSON.stringify({ error: 'chatId required' })); return }
+    const { data: chat } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name,contact_id').eq('id', cid).limit(1)
+    const { data: contact } = chat?.length && chat[0].contact_id ? await supabase.from('contacts').select('name,phone').eq('id', chat[0].contact_id).limit(1) : { data: null }
+    const session = sessions.get(url.searchParams.get('sid') || '')
+    res.writeHead(200); res.end(JSON.stringify({ chat: chat?.[0] || null, contact: contact?.[0] || null, hasSocket: !!session?.sock, sessionStatus: session?.status })); return
+  }
+
   if (pathname === '/check-lids') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
