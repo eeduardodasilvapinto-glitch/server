@@ -1249,12 +1249,13 @@ window.VeltrisWPP = (() => {
     if (!input || !input.files?.[0]) return
     var file = input.files[0]
     if (!S._serverSessionId) { alert('Conecte o WhatsApp primeiro'); return }
+    var isXlsx = file.name.endsWith('.xlsx')
+    // Check file size
+    if (file.size > 10 * 1024 * 1024) { alert('Arquivo muito grande. Máximo 10MB.'); return }
     var reader = new FileReader()
     reader.onerror = function() { alert('Erro ao ler o arquivo') }
     reader.onload = function(e) {
       var raw = e.target.result
-      var isXlsx = file.name.endsWith('.xlsx')
-      // Convert to base64 for XLSX, keep as text for CSV
       var content = isXlsx ? btoa(new Uint8Array(raw).reduce(function(d,b){return d+String.fromCharCode(b)},'')) : raw
       var body = { name: file.name, content: content, sessionId: S._serverSessionId }
       fetch(_wppServerUrl + '/upload-spreadsheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function(r){ return r.json() }).then(function(d) {
