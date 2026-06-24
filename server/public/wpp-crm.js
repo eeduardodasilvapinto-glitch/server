@@ -1163,10 +1163,15 @@ window.VeltrisWPP = (() => {
       if (!_selectedSpreadsheet) return [];
       return [{ _spreadsheetRows: _selectedSpreadsheet.rowCount, _fileId: _selectedSpreadsheet.fileId }]
     }
-    if (mode.value === 'tag') {
-      if (!_disparoTagValue) return _disparoContacts;
-      return _disparoContacts.filter(c => (c.tags || []).includes(_disparoTagValue));
-    } else {
+  if (mode.value === 'tag') {
+    if (!_disparoTagValue) return _disparoContacts;
+    var lowerTag = _disparoTagValue.toLowerCase();
+    var result = _disparoContacts.filter(function(c) {
+      var tags = c.tags || [];
+      return tags.some(function(t) { return t.toLowerCase() === lowerTag });
+    });
+    return result;
+  } else {
       var checks = qsa('.disp-contact-cb:checked');
       return Array.from(checks).map(cb => _disparoContacts.find(c => String(c.id) === cb.value)).filter(Boolean);
     }
