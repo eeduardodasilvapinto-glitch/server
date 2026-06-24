@@ -307,7 +307,9 @@ async function startSession(sessionId, userId, companyId) {
         const phone = jid.split('@')[0]
         if (normalizePhone(phone).length >= 14) continue
         const pn = msg.pushName || phone; const labelN = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho']
-        const clean = pn.toLowerCase().trim(); const dn = (clean.length < 3 || labelN.includes(clean)) ? phone : pn
+        const clean = pn.toLowerCase().trim(); let dn = (clean.length < 3 || labelN.includes(clean)) ? phone : pn
+        // Format phone-based names nicely
+        if (/^\d+$/.test(dn.replace(/\D/g, ''))) { var raw = dn.replace(/^55/, ''); var fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3'); if (fmt !== raw) dn = fmt }
         const isMe = msg.key.fromMe
         let contactId = null; const exC = await findContactByPhone(phone, companyId)
         if (exC) { contactId = exC.id; await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', contactId) }
@@ -536,7 +538,7 @@ const server = http.createServer(async (req, res) => {
       let q = supabase.from('contacts').select('id,name,phone,tags').neq('source', 'whatsapp')
       if (companyId) q = q.eq('company_id', companyId)
       const { data: all } = await q
-      const filtered = (all || []).filter(c => c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, '') + 'x'))
+      const filtered = (all || []).filter(c => c.name && c.name !== c.phone && !c.name.startsWith('{') && !c.name.includes('@') && !/^\d+$/.test(c.name.replace(/\D/g, '')))
       const seen = {}; const final = []
       for (const c of filtered) { const np = normalizePhone(c.phone); if (np && !seen[np]) { seen[np] = true; final.push({ id: c.id, name: c.name, phone: c.phone, tags: c.tags }) } }
       res.writeHead(200); res.end(JSON.stringify({ contacts: final })); return
