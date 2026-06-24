@@ -272,7 +272,7 @@ async function startSession(sessionId, userId, companyId) {
           const r = await supabase.from('whatsapp_chats').insert(p).select().single(); if (r.data) chatId = r.data.id
         }
         if (chatId) {
-          const { data: dup } = await supabase.from('whatsapp_messages').select('id').eq('chat_id', chatId).eq('text', txt.substring(0, 100)).gte('created_at', new Date(Date.now() - 30000).toISOString()).limit(1)
+          const { data: dup } = await supabase.from('whatsapp_messages').select('id').eq('chat_id', chatId).eq('text', txt.substring(0, 100)).gte('created_at', new Date(Date.now() - 600000).toISOString()).limit(1)
           if (!dup?.length) {
             const dir = isMe ? 'outgoing' : 'received'
             const mp2 = { chat_id: chatId, session_id: sessionId, text: txt, direction: dir, created_at: new Date(msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()).toISOString() }
