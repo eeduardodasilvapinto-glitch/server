@@ -214,6 +214,8 @@ async function startSession(sessionId, userId, companyId) {
       }
     }
     if (messages) {
+      // Build dedup set: chat_id → Set of recent message texts (first 100 chars)
+      const dedup = {}
       for (let i = 0; i < messages.length; i += 100) {
         entry.syncProgress = `Baixando mensagens ${Math.min(i + 100, messages.length)}/${messages.length}...`
         const inserts = []
@@ -223,7 +225,11 @@ async function startSession(sessionId, userId, companyId) {
           const ec = await findChat(jid, sessionId); if (!ec) continue
           const txt = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || ''
           if (!txt) continue
-          inserts.push({ chat_id: ec.id, session_id: sessionId, text: txt.substring(0, 500), direction: msg.key.fromMe ? 'sent' : 'received', created_at: msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString() })
+          const tKey = txt.substring(0, 100)
+          if (!dedup[ec.id]) dedup[ec.id] = new Set()
+          if (dedup[ec.id].has(tKey)) continue
+          dedup[ec.id].add(tKey)
+          inserts.push({ chat_id: ec.id, session_id: sessionId, text: txt.substring(0, 500), direction: msg.key.fromMe ? 'outgoing' : 'received', created_at: msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString() })
         }
         if (inserts.length) {
           await supabase.from('whatsapp_messages').insert(inserts)
