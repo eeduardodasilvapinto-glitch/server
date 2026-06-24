@@ -561,6 +561,15 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ hasSocket: !!entry?.sock, pumpRunning: !!entry?.outgoingInterval, sessionStatus: entry?.status, recentMessages: recent || [], pendingSentCount: sent?.length || 0 })); return
   }
 
+  if (pathname === '/check-lids') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const { data: wa } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name').eq('session_id', sid)
+    const lids = (wa || []).filter(function(ch) { var np = normalizePhone(ch.remote_jid?.split('@')[0] || ''); return np.length >= 14 })
+    const noContact = (wa || []).filter(function(ch) { var np = normalizePhone(ch.remote_jid?.split('@')[0] || ''); return np.length < 14 && !ch.contact_id })
+    res.writeHead(200); res.end(JSON.stringify({ total: wa?.length || 0, lids: lids.length, lidsSample: lids.slice(0, 5), noContact: noContact.length, noContactSample: noContact.slice(0, 5) })); return
+  }
+
   if (pathname === '/diag') {
     const tables = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
     const result = {}
