@@ -92,6 +92,34 @@ async function getCompanyId(sid) {
   } catch (e) {}
   return 'NO_COMPANY'
 }
+
+async function cleanupSessionData(sid) {
+  try {
+    const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid').eq('session_id', sid)
+    const chatIds = (chats || []).map(c => c.id)
+    const phones = new Set()
+    if (chats) for (const ch of chats) {
+      const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+      if (np) phones.add(np)
+    }
+    if (chatIds.length) await supabase.from('whatsapp_messages').delete().in('chat_id', chatIds)
+    await supabase.from('whatsapp_chats').delete().eq('session_id', sid)
+    if (phones.size) {
+      const { data: remaining } = await supabase.from('whatsapp_chats').select('remote_jid').neq('session_id', sid)
+      const stillActive = new Set()
+      if (remaining) for (const ch of remaining) {
+        const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+        if (np) stillActive.add(np)
+      }
+      for (const np of phones) {
+        if (!stillActive.has(np)) {
+          await supabase.from('contacts').delete().eq('phone', np).eq('source', 'whatsapp')
+        }
+      }
+    }
+  } catch (e) {}
+}
+
 async function trimMessages(chatId, max = 200) {
   try {
     const { data: ids } = await supabase.from('whatsapp_messages').select('id').eq('chat_id', chatId).order('created_at', { ascending: false })
@@ -213,6 +241,7 @@ async function startSession(sessionId, userId, companyId) {
     if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode; const reconnect = code !== DisconnectReason.loggedOut
       entry.status = reconnect ? 'connecting' : 'disconnected'; entry.qrCode = null; entry.sock = null; stopOutgoingPump()
+      if (!reconnect) cleanupSessionData(sessionId)
       await supabase.from('whatsapp_sessions').update({ status: entry.status }).eq('id', sessionId)
       if (reconnect) { entry.reconnectTimeout = setTimeout(() => startSession(sessionId, userId, companyId), 5000) }
       else { try { fs.rmSync(authDir, { recursive: true, force: true }) } catch {}; sessions.delete(sessionId) }
@@ -376,7 +405,7 @@ async function pollSessions() {
     for (const s of dbS) {
       if (s.status === 'connected' && !sessions.has(s.id)) { startSession(s.id, s.user_id, s.company_id) }
       else if (s.status === 'connecting' && !sessions.has(s.id)) { if (!latestConnecting) latestConnecting = s }
-      else if (s.status === 'disconnected' && sessions.has(s.id)) { const e = sessions.get(s.id); if (e.sock) try { e.sock.logout() } catch {}; e.sock = null; if (e.reconnectTimeout) clearTimeout(e.reconnectTimeout); try { fs.rmSync(e.authDir, { recursive: true, force: true }) } catch {}; sessions.delete(s.id) }
+      else if (s.status === 'disconnected' && sessions.has(s.id)) { const e = sessions.get(s.id); if (e.sock) try { e.sock.logout() } catch {}; e.sock = null; if (e.reconnectTimeout) clearTimeout(e.reconnectTimeout); cleanupSessionData(s.id); try { fs.rmSync(e.authDir, { recursive: true, force: true }) } catch {}; sessions.delete(s.id) }
     }
     if (latestConnecting && !sessions.has(latestConnecting.id)) { startSession(latestConnecting.id, latestConnecting.user_id, latestConnecting.company_id) }
   } catch (e) {}
@@ -465,6 +494,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/disconnect' && req.method === 'POST') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    await cleanupSessionData(sid)
     await supabase.from('whatsapp_sessions').update({ status: 'disconnected' }).eq('id', sid)
     const e = sessions.get(sid); if (e) { if (e.sock) try { e.sock.logout() } catch {}; e.sock = null; sessions.delete(sid) }
     res.writeHead(200); res.end(JSON.stringify({ ok: true })); return
@@ -489,8 +519,8 @@ const server = http.createServer(async (req, res) => {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
     const cid = await getCompanyId(sid)
-    // Get ALL session IDs for this company
-    const { data: companySessions } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', cid)
+    // Get only CONNECTED session IDs for this company
+    const { data: companySessions } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', cid).eq('status', 'connected')
     const sessionIds = [sid, ...(companySessions || []).map(function(s){ return s.id }).filter(function(id){ return id !== sid })]
     const { data: wa } = await supabase.from('whatsapp_chats').select('*').in('session_id', sessionIds).order('last_message_at', { ascending: false, nullsLast: true })
     let q = supabase.from('contacts').select('id,name,phone,stage,tags,source')
