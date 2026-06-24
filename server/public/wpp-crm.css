@@ -554,8 +554,8 @@
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 100px;
-  padding: 6px 12px;
-  font-size: 0.72rem;
+  padding: 7px 12px;
+  font-size: 0.75rem;
   color: var(--text);
   cursor: pointer;
   display: flex;
@@ -564,7 +564,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 120px;
+  max-width: 130px;
 }
 .wc-lead-toolbar .cs-wrap .cs-drop {
   position: absolute;
