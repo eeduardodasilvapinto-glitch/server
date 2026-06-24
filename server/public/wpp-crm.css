@@ -1229,7 +1229,7 @@
   .wc-panel { padding: 6px; }
   .wc-metric-card .value { font-size: 1rem; }
   .wc-lead-toolbar { flex-wrap: wrap; gap: 4px; }
-  .wc-lead-toolbar input { min-width: 160px; flex: 1 1 100%; order: -1; }
+  .wc-lead-toolbar input { min-width: 140px; flex: 1 1 100%; order: -1; }
   .wc-lead-toolbar .cs-wrap { flex: 1; }
   .wc-lead-toolbar .btn { flex: 0 0 auto; font-size: 0.65rem !important; padding: 6px 10px !important; }
   .wc-clientes-table { font-size: 0.65rem; }
