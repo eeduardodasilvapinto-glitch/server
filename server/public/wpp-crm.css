@@ -539,7 +539,7 @@
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 7px 12px;
+  padding: 8px 12px;
   color: var(--text);
   font-size: 0.75rem;
   font-family: inherit;
