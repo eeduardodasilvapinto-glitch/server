@@ -552,6 +552,15 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ chats: cData?.length || 0, messages: mData?.length || 0 })); return
   }
 
+  if (pathname === '/check-msgs') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const entry = sessions.get(sid)
+    const { data: recent } = await supabase.from('whatsapp_messages').select('id,chat_id,direction,created_at,text').eq('session_id', sid).order('created_at', { ascending: false }).limit(10)
+    const { data: sent } = await supabase.from('whatsapp_messages').select('id').eq('session_id', sid).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 300000).toISOString())
+    res.writeHead(200); res.end(JSON.stringify({ hasSocket: !!entry?.sock, pumpRunning: !!entry?.outgoingInterval, sessionStatus: entry?.status, recentMessages: recent || [], pendingSentCount: sent?.length || 0 })); return
+  }
+
   if (pathname === '/diag') {
     const tables = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
     const result = {}
