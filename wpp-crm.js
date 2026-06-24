@@ -1588,7 +1588,8 @@ function renderDisparoContactList() {
       updateLinkCount();
       return;
     }
-    var selected = new Set(Array.from(qsa('.link-contact-cb:checked')).map(function(cb) { return cb.value; }));
+    if (!window._linkSelectedContacts) window._linkSelectedContacts = {}
+    var selected = window._linkSelectedContacts
     var q = (el('tagLinkSearch')?.value || '').toLowerCase();
     var filtered = _tagsContactList.filter(function(c) {
       if (!q) return true;
@@ -1596,8 +1597,9 @@ function renderDisparoContactList() {
     });
     list.innerHTML = filtered.map(function(c) {
       var hasTag = _linkTagValue && (c.tags || []).includes(_linkTagValue);
+      var checked = selected[c.id] ? 'checked' : ''
       return '<label class="wc-disparo-item" style="' + (hasTag ? 'opacity:0.5' : '') + '">' +
-        '<input type="checkbox" class="link-contact-cb" value="' + c.id + '" ' + (selected.has(c.id) ? 'checked' : '') + ' onchange="VeltrisWPP.updateLinkCount()" />' +
+        '<input type="checkbox" class="link-contact-cb" value="' + c.id + '" ' + checked + ' onchange="var s=window._linkSelectedContacts||{};s[this.value]=this.checked;window._linkSelectedContacts=s;VeltrisWPP.updateLinkCount()" />' +
         '<span class="wc-disparo-item-name">' + escHtml(c.name || '—') + '</span>' +
         '<span class="wc-disparo-item-phone" style="color:var(--text-dim);font-size:0.65rem">' + ((c.tags || []).includes(_linkTagValue) ? '✓' : '') + '</span>' +
         '</label>';
@@ -1607,20 +1609,22 @@ function renderDisparoContactList() {
 
   function updateLinkCount() {
     var count = el('tagLinkCount');
-    var checks = qsa('.link-contact-cb:checked');
-    if (count) count.textContent = checks.length + ' contato(s) selecionado(s)';
+    var sel = window._linkSelectedContacts || {}
+    var total = Object.keys(sel).filter(function(k) { return sel[k] }).length
+    if (count) count.textContent = total + ' contato(s) selecionado(s)';
   }
 
   async function linkTagAction(action) {
     var result = el('tagLinkResult');
     if (!result) return;
     if (!_linkTagValue) { alert('Selecione uma tag'); return; }
-    var checks = qsa('.link-contact-cb:checked');
-    if (checks.length === 0) { alert('Selecione pelo menos um contato'); return; }
+    var sel = window._linkSelectedContacts || {}
+    var ids = Object.keys(sel).filter(function(k) { return sel[k] })
+    if (ids.length === 0) { alert('Selecione pelo menos um contato'); return; }
     result.style.display = 'none';
     var updated = 0, failed = 0;
-    for (var i = 0; i < checks.length; i++) {
-      var c = _tagsContactList.find(function(ct) { return String(ct.id) === checks[i].value; });
+    for (var i = 0; i < ids.length; i++) {
+      var c = _tagsContactList.find(function(ct) { return String(ct.id) === ids[i]; });
       if (!c) continue;
       var tags = c.tags || [];
       if (action === 'add') {
