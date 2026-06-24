@@ -27,6 +27,10 @@ if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true })
 if (!fs.existsSync(SPREADSHEETS_DIR)) fs.mkdirSync(SPREADSHEETS_DIR, { recursive: true })
 
 const sessions = new Map()
+// Daily send limits per company
+const dailySent = {}
+const DAILY_LIMIT_DEFAULT = 500
+
 let msgUpsertCount = 0, msgSkippedNoMsg = 0, msgSkippedGroup = 0, msgSkippedLid = 0, msgSkippedNoText = 0, msgProcessed = 0, msgTypesSeen = ''
 let msgJidsReceived = ''
 
@@ -113,7 +117,7 @@ async function startSession(sessionId, userId, companyId) {
     }
   } catch (e) {}
 
-  const entry = { sock: null, authDir, qrCode: null, outgoingInterval: null, reconnectTimeout: null, phone: null, status: 'connecting', userId, companyId, labels: {}, chatLabels: {}, syncingHistory: false, syncProgress: '' }
+  const entry = { sock: null, authDir, qrCode: null, outgoingInterval: null, outgoingRunning: false, reconnectTimeout: null, phone: null, status: 'connecting', userId, companyId, labels: {}, chatLabels: {}, syncingHistory: false, syncProgress: '', lastSentText: '', dailyLimit: DAILY_LIMIT_DEFAULT }
   sessions.set(sessionId, entry)
 
   const { state, saveCreds } = await useMultiFileAuthState(authDir)
@@ -137,43 +141,62 @@ async function startSession(sessionId, userId, companyId) {
     } catch (e) {}
   })
 
-  function startOutgoingPump() {
-    if (entry.outgoingInterval) clearInterval(entry.outgoingInterval)
-    entry.outgoingInterval = setInterval(async () => {
-      if (!entry.sock) {
-        // Try to recover - check if socket was recreated
-        const refreshed = sessions.get(sessionId)
-        if (refreshed?.sock) { entry.sock = refreshed.sock }
-        else return
-      }
-      try {
-        const { data: pending } = await supabase.from('whatsapp_messages').select('id,chat_id,text,media_url,message_type').eq('session_id', sessionId).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 600000).toISOString()).order('created_at', { ascending: true }).limit(20)
-        if (!pending?.length) return
-        for (const msg of pending) {
-          try {
-            const { data: chats } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', msg.chat_id).limit(1)
-            const jid = chats?.[0]?.remote_jid; if (!jid) { await supabase.from('whatsapp_messages').update({ direction: 'failed' }).eq('id', msg.id); continue }
-            if (msg.message_type === 'image' && msg.media_url) {
-              const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
-              if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { image: fs.readFileSync(fp), caption: msg.text || '' }) }
-              else { await entry.sock.sendMessage(jid, { text: msg.text }) }
-            } else if (msg.message_type === 'audio' && msg.media_url) {
-              const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
-              if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { audio: fs.readFileSync(fp), mimetype: 'audio/ogg' }) }
-              else { await entry.sock.sendMessage(jid, { text: msg.text }) }
-            } else {
-              await entry.sock.sendMessage(jid, { text: msg.text })
-            }
-            await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id)
-          } catch (e) {
-            if (e.message?.includes('Connection closed')) { entry.sock = null; clearInterval(entry.outgoingInterval); entry.outgoingInterval = null; return }
-            await supabase.from('whatsapp_messages').update({ direction: 'failed' }).eq('id', msg.id)
-          }
-        }
-      } catch (e) {}
-    }, 3000)
+  function getDailyCount() {
+    const today = new Date().toISOString().slice(0, 10)
+    if (!dailySent[companyId] || dailySent[companyId].date !== today) {
+      dailySent[companyId] = { date: today, count: 0 }
+    }
+    return dailySent[companyId].count
   }
-  function stopOutgoingPump() { if (entry.outgoingInterval) { clearInterval(entry.outgoingInterval); entry.outgoingInterval = null } }
+
+  function getDailyLimit() { return entry.dailyLimit || DAILY_LIMIT_DEFAULT }
+
+  async function pumpOne() {
+    if (!entry.sock || entry.outgoingRunning) return
+    entry.outgoingRunning = true
+    try {
+      // Check daily limit
+      if (getDailyCount() >= getDailyLimit()) { entry.outgoingRunning = false; return }
+      const { data: pending } = await supabase.from('whatsapp_messages').select('id,chat_id,text,media_url,message_type').eq('session_id', sessionId).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 600000).toISOString()).order('created_at', { ascending: true }).limit(1)
+      if (!pending?.length) { entry.outgoingRunning = false; return }
+      const msg = pending[0]
+      try {
+        const { data: chats } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', msg.chat_id).limit(1)
+        const jid = chats?.[0]?.remote_jid; if (!jid) { await supabase.from('whatsapp_messages').update({ direction: 'failed' }).eq('id', msg.id); entry.outgoingRunning = false; return }
+        // Skip if text is same as last sent (anti-ban)
+        if (msg.text && msg.text === entry.lastSentText) { await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id); entry.outgoingRunning = false; return }
+        if (msg.message_type === 'image' && msg.media_url) {
+          const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
+          if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { image: fs.readFileSync(fp), caption: msg.text || '' }) }
+          else { await entry.sock.sendMessage(jid, { text: msg.text }) }
+        } else if (msg.message_type === 'audio' && msg.media_url) {
+          const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
+          if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { audio: fs.readFileSync(fp), mimetype: 'audio/ogg' }) }
+          else { await entry.sock.sendMessage(jid, { text: msg.text }) }
+        } else {
+          await entry.sock.sendMessage(jid, { text: msg.text })
+        }
+        await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id)
+        entry.lastSentText = msg.text || ''
+        dailySent[companyId].count++
+      } catch (e) {
+        if (e.message?.includes('Connection closed')) { entry.sock = null; clearInterval(entry.outgoingInterval); entry.outgoingInterval = null; entry.outgoingRunning = false; return }
+        await supabase.from('whatsapp_messages').update({ direction: 'failed' }).eq('id', msg.id)
+      }
+    } catch (e) {}
+    entry.outgoingRunning = false
+    // Schedule next with random delay 8-20s
+    if (entry.outgoingInterval) {
+      const delay = 8000 + Math.random() * 12000
+      entry.outgoingInterval = setTimeout(pumpOne, delay)
+    }
+  }
+
+  function startOutgoingPump() {
+    if (entry.outgoingInterval) clearTimeout(entry.outgoingInterval)
+    entry.outgoingInterval = setTimeout(pumpOne, 3000)
+  }
+  function stopOutgoingPump() { if (entry.outgoingInterval) { clearTimeout(entry.outgoingInterval); entry.outgoingInterval = null } }
 
   sock.ev.on('connection.update', async ({ qr, connection, lastDisconnect }) => {
     if (qr) {
@@ -387,7 +410,8 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/qr') { const sid = url.searchParams.get('sessionId'); const e = sid ? sessions.get(sid) : null; res.writeHead(200); res.end(JSON.stringify({ qr_code: e?.qrCode || null })); return }
   if (pathname === '/sync-status') { const sid = url.searchParams.get('sessionId'); const e = sid ? sessions.get(sid) : null; res.writeHead(200); res.end(JSON.stringify({ syncing: e?.syncingHistory || false, progress: e?.syncProgress || '' })); return }
-  if (pathname === '/pump-status') { const sid = url.searchParams.get('sessionId'); const e = sid ? sessions.get(sid) : null; const pump = !!e?.outgoingInterval; let p = []; if (sid) { const r = await supabase.from('whatsapp_messages').select('id,chat_id,text,direction,created_at').eq('session_id', sid).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 120000).toISOString()).limit(10); p = r.data || [] }; res.writeHead(200); res.end(JSON.stringify({ pumpRunning: pump, pendingCount: p.length, pending: p, hasSocket: !!e?.sock, sessionStatus: e?.status })); return }
+  if (pathname === '/pump-status') { const sid = url.searchParams.get('sessionId'); const e = sid ? sessions.get(sid) : null; const pump = !!e?.outgoingInterval; let p = []; if (sid) { const r = await supabase.from('whatsapp_messages').select('id,chat_id,text,direction,created_at').eq('session_id', sid).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 120000).toISOString()).limit(10); p = r.data || [] }; const cid = e?.companyId; const dc = dailySent[cid] || { date: 'none', count: 0 }; res.writeHead(200); res.end(JSON.stringify({ pumpRunning: pump, pendingCount: p.length, pending: p, hasSocket: !!e?.sock, sessionStatus: e?.status, dailySent: dc.count, dailyLimit: e?.dailyLimit || DAILY_LIMIT_DEFAULT, dailyDate: dc.date, lastSentText: e?.lastSentText || '' })); return }
+  if (pathname === '/set-daily-limit') { const sid = url.searchParams.get('sessionId'); const limit = parseInt(url.searchParams.get('limit')) || DAILY_LIMIT_DEFAULT; const e = sid ? sessions.get(sid) : null; if (e) e.dailyLimit = limit; res.writeHead(200); res.end(JSON.stringify({ ok: true, dailyLimit: limit })); return }
 
   if (pathname === '/connect') {
     try {
@@ -1165,31 +1189,30 @@ const server = http.createServer(async (req, res) => {
             }
           }
         }
-        let sent = 0, failed = 0
         const entry = sessions.get(sessionId)
-        const sock = entry?.sock
+        // Get or create chats for each row and insert messages as 'sent' (goes through pump)
+        let inserted = 0
         for (const row of rows) {
           try {
             const personalized = text.replace(/\{nome\}/g, row.name)
-            const jid = '55' + row.phone + '@s.whatsapp.net'
-            // Send directly via Baileys socket (bypasses pump, avoids echo duplicates)
-            if (sock) {
-              if (mediaUrl && messageType === 'image') {
-                const fp = path.join(MEDIA_DIR, mediaUrl.replace('/media/', ''))
-                if (fs.existsSync(fp)) await sock.sendMessage(jid, { image: fs.readFileSync(fp), caption: personalized || '' })
-                else await sock.sendMessage(jid, { text: personalized })
-              } else if (mediaUrl && messageType === 'audio') {
-                const fp = path.join(MEDIA_DIR, mediaUrl.replace('/media/', ''))
-                if (fs.existsSync(fp)) await sock.sendMessage(jid, { audio: fs.readFileSync(fp), mimetype: 'audio/ogg' })
-                else await sock.sendMessage(jid, { text: personalized })
-              } else {
-                await sock.sendMessage(jid, { text: personalized })
-              }
+            const phoneNum = normalizePhone(row.phone)
+            if (!phoneNum) continue
+            const jid = '55' + phoneNum + '@s.whatsapp.net'
+            let chatId = null
+            const exCh = await findChat(jid, sessionId)
+            if (exCh) { chatId = exCh.id } else {
+              const p = { remote_jid: jid, contact_name: row.name || phoneNum, session_id: sessionId }; if (companyId) p.company_id = companyId
+              const r = await supabase.from('whatsapp_chats').insert(p).select().single()
+              if (r.data) chatId = r.data.id
             }
-            sent++
-          } catch (e) { failed++ }
+            if (chatId) {
+              const mp2 = { chat_id: chatId, session_id: sessionId, text: personalized, direction: 'sent', message_type: mediaUrl && messageType === 'image' ? 'image' : mediaUrl && messageType === 'audio' ? 'audio' : 'text', created_at: new Date().toISOString() }
+              if (mediaUrl) mp2.media_url = mediaUrl
+              await supabase.from('whatsapp_messages').insert(mp2); inserted++
+            }
+          } catch (e) {}
         }
-        res.writeHead(200); res.end(JSON.stringify({ ok: true, sent, failed, total: rows.length }))
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, inserted, total: rows.length }))
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
     return
