@@ -521,6 +521,23 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result, null, 2)); return
   }
 
+  if (pathname === '/fix-null-company') {
+    const targetCid = url.searchParams.get('company_id')
+    if (!targetCid) { res.writeHead(400); res.end(JSON.stringify({ error: 'company_id required' })); return }
+    const tables = ['contacts','whatsapp_chats','whatsapp_messages','whatsapp_sessions']
+    let total = 0
+    for (const t of tables) {
+      try {
+        const { data: nullRows } = await supabase.from(t).select('id').is('company_id', null)
+        if (nullRows?.length) {
+          await supabase.from(t).update({ company_id: targetCid }).is('company_id', null)
+          total += nullRows.length
+        }
+      } catch (e) {}
+    }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, updated: total, company_id: targetCid })); return
+  }
+
   res.writeHead(404); res.end('Not found')
 })
 
