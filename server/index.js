@@ -141,22 +141,27 @@ async function startSession(sessionId, userId, companyId) {
         const { data: pending } = await supabase.from('whatsapp_messages').select('id,chat_id,text,media_url,message_type').eq('session_id', sessionId).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 120000).toISOString()).order('created_at', { ascending: true }).limit(20)
         if (!pending?.length) return
         for (const msg of pending) {
-          const { data: chats } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', msg.chat_id).limit(1)
-          const jid = chats?.[0]?.remote_jid; if (!jid) continue
-          if (msg.message_type === 'image' && msg.media_url) {
-            const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
-            if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { image: fs.readFileSync(fp), caption: msg.text || '' }) }
-            else { await entry.sock.sendMessage(jid, { text: msg.text }) }
-          } else if (msg.message_type === 'audio' && msg.media_url) {
-            const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
-            if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { audio: fs.readFileSync(fp), mimetype: 'audio/ogg' }) }
-            else { await entry.sock.sendMessage(jid, { text: msg.text }) }
-          } else {
-            await entry.sock.sendMessage(jid, { text: msg.text })
+          try {
+            const { data: chats } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', msg.chat_id).limit(1)
+            const jid = chats?.[0]?.remote_jid; if (!jid) { await supabase.from('whatsapp_messages').update({ direction: 'failed' }).eq('id', msg.id); continue }
+            if (msg.message_type === 'image' && msg.media_url) {
+              const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
+              if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { image: fs.readFileSync(fp), caption: msg.text || '' }) }
+              else { await entry.sock.sendMessage(jid, { text: msg.text }) }
+            } else if (msg.message_type === 'audio' && msg.media_url) {
+              const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
+              if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { audio: fs.readFileSync(fp), mimetype: 'audio/ogg' }) }
+              else { await entry.sock.sendMessage(jid, { text: msg.text }) }
+            } else {
+              await entry.sock.sendMessage(jid, { text: msg.text })
+            }
+            await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id)
+          } catch (e) {
+            if (e.message?.includes('Connection closed')) { entry.sock = null; clearInterval(entry.outgoingInterval); entry.outgoingInterval = null; return }
+            await supabase.from('whatsapp_messages').update({ direction: 'failed' }).eq('id', msg.id)
           }
-          await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id)
         }
-      } catch (e) { if (e.message?.includes('Connection closed')) { entry.sock = null; clearInterval(entry.outgoingInterval); entry.outgoingInterval = null } }
+      } catch (e) {}
     }, 3000)
   }
   function stopOutgoingPump() { if (entry.outgoingInterval) { clearInterval(entry.outgoingInterval); entry.outgoingInterval = null } }
@@ -260,7 +265,7 @@ async function startSession(sessionId, userId, companyId) {
           const r = await supabase.from('whatsapp_chats').insert(p).select().single(); if (r.data) chatId = r.data.id
         }
         if (chatId) {
-          const { data: dup } = await supabase.from('whatsapp_messages').select('id').eq('chat_id', chatId).eq('text', txt.substring(0, 100)).gte('created_at', new Date(Date.now() - 10000).toISOString()).limit(1)
+          const { data: dup } = await supabase.from('whatsapp_messages').select('id').eq('chat_id', chatId).eq('text', txt.substring(0, 100)).gte('created_at', new Date(Date.now() - 30000).toISOString()).limit(1)
           if (!dup?.length) {
             const dir = isMe ? 'outgoing' : 'received'
             const mp2 = { chat_id: chatId, session_id: sessionId, text: txt, direction: dir, created_at: new Date(msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()).toISOString() }
@@ -816,22 +821,27 @@ const server = http.createServer(async (req, res) => {
           }
         }
         let sent = 0, failed = 0
+        const entry = sessions.get(sessionId)
+        const sock = entry?.sock
         for (const row of rows) {
           try {
             const personalized = text.replace(/\{nome\}/g, row.name)
             const jid = '55' + row.phone + '@s.whatsapp.net'
-            // Find or create chat
-            let chatId = null
-            const ec = await findChat(jid, sessionId)
-            if (ec) { chatId = ec.id } else {
-              const r = await supabase.from('whatsapp_chats').insert({ remote_jid: jid, contact_name: row.name || row.phone, session_id: sessionId }).select().single()
-              if (r.data) chatId = r.data.id
+            // Send directly via Baileys socket (bypasses pump, avoids echo duplicates)
+            if (sock) {
+              if (mediaUrl && messageType === 'image') {
+                const fp = path.join(MEDIA_DIR, mediaUrl.replace('/media/', ''))
+                if (fs.existsSync(fp)) await sock.sendMessage(jid, { image: fs.readFileSync(fp), caption: personalized || '' })
+                else await sock.sendMessage(jid, { text: personalized })
+              } else if (mediaUrl && messageType === 'audio') {
+                const fp = path.join(MEDIA_DIR, mediaUrl.replace('/media/', ''))
+                if (fs.existsSync(fp)) await sock.sendMessage(jid, { audio: fs.readFileSync(fp), mimetype: 'audio/ogg' })
+                else await sock.sendMessage(jid, { text: personalized })
+              } else {
+                await sock.sendMessage(jid, { text: personalized })
+              }
             }
-            if (!chatId) { failed++; continue }
-            // Insert message with optional media
-            const mp = { chat_id: chatId, session_id: sessionId, text: personalized.substring(0, 500), direction: 'sent', created_at: new Date().toISOString() }
-            if (mediaUrl) { mp.media_url = mediaUrl; mp.message_type = messageType || 'image' }
-            await supabase.from('whatsapp_messages').insert(mp); sent++
+            sent++
           } catch (e) { failed++ }
         }
         res.writeHead(200); res.end(JSON.stringify({ ok: true, sent, failed, total: rows.length }))
