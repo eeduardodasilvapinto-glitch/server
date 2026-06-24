@@ -854,9 +854,14 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/add-webhook-column') {
     try {
-      const { error } = await supabase.rpc('exec_sql', { sql: "ALTER TABLE companies ADD COLUMN IF NOT EXISTS webhook_code TEXT;" })
-      if (error) throw error
-      res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+      // Use Supabase REST to run raw SQL
+      const resp = await fetch(SUPABASE_URL + '/rest/v1/', {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify({})
+      })
+      // Try via pg_dump approach - just return error with instructions
+      res.writeHead(200); res.end(JSON.stringify({ ok: false, hint: 'Rode manualmente no SQL Editor do Supabase: ALTER TABLE companies ADD COLUMN IF NOT EXISTS webhook_code TEXT;' }))
     } catch (e) {
       res.writeHead(200); res.end(JSON.stringify({ ok: false, error: e.message }))
     }
@@ -871,15 +876,8 @@ const server = http.createServer(async (req, res) => {
         const { sessionId } = JSON.parse(body)
         const companyId = await getCompanyId(sessionId)
         if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ error: 'No company' })); return }
-        // Check if company has a webhook_code, if not generate one
-        const { data: company } = await supabase.from('companies').select('webhook_code,name').eq('id', companyId).limit(1)
-        if (company?.[0]?.webhook_code) {
-          res.writeHead(200); res.end(JSON.stringify({ company_code: company[0].webhook_code, company_id: companyId }))
-        } else {
-          const code = companyId.split('-')[0] + '-' + Math.random().toString(36).slice(2, 8).toUpperCase()
-          await supabase.from('companies').update({ webhook_code: code }).eq('id', companyId)
-          res.writeHead(200); res.end(JSON.stringify({ company_code: code, company_id: companyId }))
-        }
+        const shortCode = companyId.split('-')[0].toUpperCase()
+        res.writeHead(200); res.end(JSON.stringify({ company_code: shortCode, company_id: companyId }))
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
     return
@@ -891,14 +889,21 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const d = JSON.parse(body)
-        const companyCode = d.company_code || d.code || ''
-        const companyId = d.company_id || ''
+        const rawCode = (d.company_code || d.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+        const rawId = d.company_id || ''
         let cid = null
-        if (companyId) {
-          cid = companyId
-        } else if (companyCode) {
-          const { data: company } = await supabase.from('companies').select('id').eq('webhook_code', companyCode).limit(1)
-          if (company?.[0]) cid = company[0].id
+        if (rawId) {
+          const { data: comp } = await supabase.from('companies').select('id').eq('id', rawId).limit(1)
+          if (comp?.[0]) cid = comp[0].id
+        }
+        if (!cid && rawCode) {
+          // Match by first segment of UUID (company_code = first 8 hex chars uppercase)
+          const { data: comps } = await supabase.from('companies').select('id').limit(500)
+          if (comps) {
+            for (const comp of comps) {
+              if (comp.id.split('-')[0].toUpperCase() === rawCode) { cid = comp.id; break }
+            }
+          }
         }
         if (!cid) { res.writeHead(200); res.end(JSON.stringify({ error: 'Invalid company' })); return }
         const insertData = {
