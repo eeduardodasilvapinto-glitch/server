@@ -31,6 +31,8 @@ const sessions = new Map()
 function normalizePhone(raw) {
   if (!raw) return ''
   var p = raw.replace(/\D/g, '').replace(/^55/, '')
+  // Brazilian mobile: 10 digits (DDD+8digits) -> add 9 after DDD
+  if (p.length === 10) p = p.slice(0, 2) + '9' + p.slice(2)
   return p
 }
 function phoneVariants(raw) {
