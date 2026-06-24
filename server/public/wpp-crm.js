@@ -1648,12 +1648,12 @@ window.VeltrisWPP = (() => {
             ${S.stages.map(s => `<div class="cs-opt" data-value="${s}" onclick="VeltrisWPP.selectStage('${s}')">${stageLabel(s)}</div>`).join('')}
           </div>
         </div>
-        <button class="btn btn-outline" onclick="VeltrisWPP.toggleBulkSelect()" style="font-size:0.7rem" id="wcBulkBtn">✏️  Editar em massa</button>
+        <button class="btn btn-outline" onclick="VeltrisWPP.toggleBulkSelect()" style="font-size:0.7rem" id="wcBulkBtn"><i class="fi fi-rr-pencil"></i> Editar em massa</button>
         <button class="btn btn-save" onclick="VeltrisWPP.showAddLeadForm()" style="font-size:0.7rem">+ Novo Cliente</button>
       </div>
       <div id="wcBulkBar" style="display:none;padding:6px 0;gap:6px;align-items:center">
         <span style="font-size:0.7rem;color:var(--text-dim)" id="wcBulkCount">0 selecionados</span>
-        <button class="btn btn-save" style="font-size:0.65rem;padding:4px 10px" onclick="VeltrisWPP.bulkEdit()">✏️  Editar selecionados</button>
+        <button class="btn btn-save" style="font-size:0.65rem;padding:4px 10px" onclick="VeltrisWPP.bulkEdit()"><i class="fi fi-rr-pencil"></i> Editar selecionados</button>
         <button class="btn btn-outline" style="font-size:0.65rem;padding:4px 10px" onclick="VeltrisWPP.toggleBulkSelect()">Cancelar</button>
       </div>
       <div id="wcAddLeadForm" style="display:none">
