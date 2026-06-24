@@ -599,6 +599,10 @@
 }
 .wc-lead-toolbar .cs-wrap .cs-opt:hover { background: rgba(var(--opacity-color),0.06); color: var(--text); }
 
+/* Bulk select: checkboxes hidden by default, shown only when bulk active */
+.wc-bulk-cb, #wcBulkAll { visibility: hidden !important; }
+.wc-bulk-active .wc-bulk-cb, .wc-bulk-active #wcBulkAll { visibility: visible !important; }
+
 /* Add lead form inline */
 .wc-add-lead { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
 .wc-add-lead .field { display: flex; flex-direction: column; gap: 3px; }

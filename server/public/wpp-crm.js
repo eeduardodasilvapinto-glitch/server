@@ -1605,10 +1605,8 @@ window.VeltrisWPP = (() => {
       </div>
       <div id="wcLeadsPagination" style="display:flex;gap:4px;justify-content:center;padding:10px 0;flex-wrap:wrap"></div>`;
     // Hide checkboxes initially
-    setTimeout(function() {
-      var cbs2 = document.querySelectorAll('.wc-bulk-cb, #wcBulkAll')
-      for (var i2 = 0; i2 < cbs2.length; i2++) cbs2[i2].style.visibility = 'hidden'
-    }, 50)
+    var tableContainer = document.querySelector('.wc-clientes-table')?.closest('div') || document.querySelector('.wc-clientes-table')?.parentNode
+    if (tableContainer) tableContainer.classList.remove('wc-bulk-active')
     renderLeadsPagination()
   }
 
@@ -1933,9 +1931,11 @@ window.VeltrisWPP = (() => {
     var wasVisible = bar.style.display !== 'none'
     bar.style.display = wasVisible ? 'none' : 'flex'
     if (wasVisible) { S._bulkSelected = {}; var allCb = document.getElementById('wcBulkAll'); if (allCb) allCb.checked = false }
-    var show = !wasVisible
-    var cbs = qsa('.wc-bulk-cb, #wcBulkAll')
-    for (var i = 0; i < cbs.length; i++) cbs[i].style.visibility = show ? 'visible' : 'hidden'
+    var tableContainer = document.querySelector('.wc-clientes-table')?.closest('.wc-clientes-table')?.parentNode || document.querySelector('.wc-clientes-table')?.parentNode
+    if (tableContainer) {
+      if (wasVisible) tableContainer.classList.remove('wc-bulk-active')
+      else tableContainer.classList.add('wc-bulk-active')
+    }
     updateBulkCount()
     filterLeads()
   }
