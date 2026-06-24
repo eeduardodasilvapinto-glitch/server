@@ -549,6 +549,43 @@
 .wc-lead-toolbar select:focus { border-color: var(--accent); }
 .wc-lead-toolbar > * { flex: 1; }
 .wc-lead-toolbar .btn { flex: 0 0 auto; }
+.wc-lead-toolbar .cs-wrap { position: relative; flex: 0 0 auto; min-width: 0; }
+.wc-lead-toolbar .cs-wrap .cs-trigger {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  min-width: 0;
+}
+.wc-lead-toolbar .cs-wrap .cs-drop {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  z-index: 100;
+  min-width: 140px;
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.wc-lead-toolbar .cs-wrap .cs-opt {
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.wc-lead-toolbar .cs-wrap .cs-opt:hover { background: rgba(var(--opacity-color),0.06); }
 
 /* Add lead form inline */
 .wc-add-lead { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
