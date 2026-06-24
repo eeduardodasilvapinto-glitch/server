@@ -460,6 +460,35 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, removed })); return
   }
 
+  if (pathname === '/reset-whatsapp-data') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    // Disconnect socket
+    const entry = sessions.get(sid)
+    if (entry) {
+      if (entry.sock) try { entry.sock.logout() } catch (e) {}
+      if (entry.outgoingInterval) clearInterval(entry.outgoingInterval)
+      if (entry.reconnectTimeout) clearTimeout(entry.reconnectTimeout)
+      sessions.delete(sid)
+    }
+    // Clear auth directory
+    const authDir = path.join(AUTH_BASE, sid)
+    try { fs.rmSync(authDir, { recursive: true, force: true }) } catch (e) {}
+    // Delete WhatsApp messages
+    try { await supabase.from('whatsapp_messages').delete().neq('id', '00000000-0000-0000-0000-000000000000') } catch (e) {}
+    // Delete WhatsApp chats
+    try { await supabase.from('whatsapp_chats').delete().neq('id', '00000000-0000-0000-0000-000000000000') } catch (e) {}
+    // Delete WhatsApp-sourced contacts
+    try {
+      const { data: waContacts } = await supabase.from('contacts').select('id').eq('source', 'whatsapp')
+      const waIds = (waContacts || []).map(function(c){ return c.id })
+      if (waIds.length) await supabase.from('contacts').delete().in('id', waIds)
+    } catch (e) {}
+    // Update session status
+    try { await supabase.from('whatsapp_sessions').update({ status: 'disconnected', auth_creds: null }).eq('id', sid) } catch (e) {}
+    res.writeHead(200); res.end(JSON.stringify({ ok: true })); return
+  }
+
   if (pathname === '/test-jid' && req.method === 'POST') {
     let body = ''
     req.on('data', c => body += c)
