@@ -573,10 +573,13 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/chats') {
     const sid = url.searchParams.get('sessionId')
     if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
-    const cid = await getCompanyId(sid)
-    // Only include sid if it's from a connected session
-    const entry = sessions.get(sid)
-    if (!entry || entry.status !== 'connected') { res.writeHead(200); res.end(JSON.stringify({ chats: [] })); return }
+    // Check if session is connected (check DB as fallback for sessions not in memory)
+    let entry = sessions.get(sid)
+    if (!entry || entry.status !== 'connected') {
+      const { data: dbEntry } = await supabase.from('whatsapp_sessions').select('status,company_id').eq('id', sid).limit(1)
+      if (!dbEntry?.length || dbEntry[0].status !== 'connected') { res.writeHead(200); res.end(JSON.stringify({ chats: [] })); return }
+    }
+    const cid = entry?.companyId || (await getCompanyId(sid))
     // Get all sessions for this company (including past disconnected)
     const { data: companySessions } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', cid)
     const sessionIds = [sid, ...(companySessions || []).map(function(s){ return s.id }).filter(function(id){ return id !== sid })]
