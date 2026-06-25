@@ -77,7 +77,7 @@ async function findChat(jid, sessionId, companyId) {
   // Try with session id first
   let found = null
   for (const v of variants) {
-    let q = supabase.from('whatsapp_chats').select('id,unread_count').eq('remote_jid', v)
+    let q = supabase.from('whatsapp_chats').select('id,unread_count,contact_name').eq('remote_jid', v)
     if (sessionId) q = q.eq('session_id', sessionId)
     const { data } = await q.limit(1)
     if (data?.length) { found = data[0]; break }
@@ -89,7 +89,7 @@ async function findChat(jid, sessionId, companyId) {
     const otherSids = (sList || []).map(s => s.id).filter(id => id !== sessionId)
     if (otherSids.length) {
       for (const v of variants) {
-        let q = supabase.from('whatsapp_chats').select('id,unread_count').eq('remote_jid', v).in('session_id', otherSids)
+        let q = supabase.from('whatsapp_chats').select('id,unread_count,contact_name').eq('remote_jid', v).in('session_id', otherSids)
         const { data } = await q.limit(1)
         if (data?.length) return data[0]
       }
