@@ -209,33 +209,42 @@ async function startSession(sessionId, userId, companyId) {
         const { data: chats } = await supabase.from('whatsapp_chats').select('remote_jid,contact_id').eq('id', msg.chat_id).limit(1)
         let jid = chats?.[0]?.remote_jid
         if (!jid) { await supabase.from('whatsapp_messages').update({ direction: 'failed' }).eq('id', msg.id); entry.outgoingRunning = false; return }
-        // If LID and has contact_id, try real phone
+        // Build list of JIDs to try (LID first, real phone as fallback)
+        const jidsToTry = [jid]
         if (jid.includes('@lid') && chats[0].contact_id) {
           const { data: ct } = await supabase.from('contacts').select('phone').eq('id', chats[0].contact_id).limit(1)
           if (ct?.length && ct[0].phone) {
-            const realJid = '55' + normalizePhone(ct[0].phone) + '@s.whatsapp.net'
-            jid = realJid
+            jidsToTry.push('55' + normalizePhone(ct[0].phone) + '@s.whatsapp.net')
           }
         }
         // Skip if text is same as last sent (anti-ban)
         if (msg.text && msg.text === entry.lastSentText) { await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id); entry.outgoingRunning = false; return }
-        if (msg.message_type === 'image' && msg.media_url) {
-          const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
-          if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { image: fs.readFileSync(fp), caption: msg.text || '' }) }
-          else { await entry.sock.sendMessage(jid, { text: msg.text }) }
-        } else if (msg.message_type === 'audio' && msg.media_url) {
-          const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
-          if (fs.existsSync(fp)) { await entry.sock.sendMessage(jid, { audio: fs.readFileSync(fp), mimetype: 'audio/ogg' }) }
-          else { await entry.sock.sendMessage(jid, { text: msg.text }) }
-        } else {
-          await entry.sock.sendMessage(jid, { text: msg.text })
+        let sent = false, lastError = null
+        for (const tryJid of jidsToTry) {
+          try {
+            if (msg.message_type === 'image' && msg.media_url) {
+              const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
+              if (fs.existsSync(fp)) { await entry.sock.sendMessage(tryJid, { image: fs.readFileSync(fp), caption: msg.text || '' }) }
+              else { await entry.sock.sendMessage(tryJid, { text: msg.text }) }
+            } else if (msg.message_type === 'audio' && msg.media_url) {
+              const fp = path.join(MEDIA_DIR, msg.media_url.replace('/media/', ''))
+              if (fs.existsSync(fp)) { await entry.sock.sendMessage(tryJid, { audio: fs.readFileSync(fp), mimetype: 'audio/ogg' }) }
+              else { await entry.sock.sendMessage(tryJid, { text: msg.text }) }
+            } else {
+              await entry.sock.sendMessage(tryJid, { text: msg.text })
+            }
+            sent = true; break
+          } catch (e) { lastError = e }
         }
-        await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id)
-        entry.lastSentText = msg.text || ''
-        dailySent[companyId].count++
+        if (sent) {
+          await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id)
+          entry.lastSentText = msg.text || ''
+          dailySent[companyId].count++
+        } else {
+          await supabase.from('whatsapp_messages').update({ direction: 'failed' }).eq('id', msg.id)
+        }
       } catch (e) {
         if (e.message?.includes('Connection closed')) { entry.sock = null; clearInterval(entry.outgoingInterval); entry.outgoingInterval = null; entry.outgoingRunning = false; return }
-        await supabase.from('whatsapp_messages').update({ direction: 'failed' }).eq('id', msg.id)
       }
     } catch (e) {}
     entry.outgoingRunning = false
@@ -901,18 +910,25 @@ const server = http.createServer(async (req, res) => {
           try {
             const { data: chatRow } = await supabase.from('whatsapp_chats').select('remote_jid,contact_id').eq('id', chatId).limit(1)
             if (chatRow?.length) {
-              let targetJid = chatRow[0].remote_jid
-              // If LID and has contact_id, try to send via real phone number
-              if (targetJid.includes('@lid') && chatRow[0].contact_id) {
+              let jidsToTry = [chatRow[0].remote_jid]
+              // If LID and has contact_id, add real phone as fallback
+              if (chatRow[0].remote_jid.includes('@lid') && chatRow[0].contact_id) {
                 const { data: ct } = await supabase.from('contacts').select('phone').eq('id', chatRow[0].contact_id).limit(1)
                 if (ct?.length && ct[0].phone) {
-                  const realJid = '55' + normalizePhone(ct[0].phone) + '@s.whatsapp.net'
-                  targetJid = realJid
+                  jidsToTry.push('55' + normalizePhone(ct[0].phone) + '@s.whatsapp.net')
                 }
               }
-              await sendEntry.sock.sendMessage(targetJid, { text: d.text.substring(0, 500) })
-              await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', inserted[0].id)
-              await supabase.from('whatsapp_chats').update({ last_message: { text: d.text.substring(0, 200), at: new Date().toISOString() }, last_message_at: new Date().toISOString() }).eq('id', chatId)
+              let sent = false, lastError = null
+              for (const tryJid of jidsToTry) {
+                try {
+                  await sendEntry.sock.sendMessage(tryJid, { text: d.text.substring(0, 500) })
+                  sent = true; break
+                } catch (e) { lastError = e }
+              }
+              if (sent) {
+                await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', inserted[0].id)
+                await supabase.from('whatsapp_chats').update({ last_message: { text: d.text.substring(0, 200), at: new Date().toISOString() }, last_message_at: new Date().toISOString() }).eq('id', chatId)
+              }
             }
           } catch (e) {
             // Leave as 'sent' for pump to retry
