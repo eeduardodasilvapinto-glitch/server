@@ -375,11 +375,16 @@ async function startSession(sessionId, userId, companyId) {
         const txt = mType === 'audio' ? 'Audio' : mType === 'image' ? 'Foto' : m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || ''
         if (!txt && !mediaUrl) { msgSkippedNoText++; const msgKeys = Object.keys(m); if (msgTypesSeen.length < 500) msgTypesSeen += (msgTypesSeen ? ',' : '') + msgKeys.join('|'); if (msgJidsReceived.length < 500) msgJidsReceived += (msgJidsReceived ? ',' : '') + jid; continue }
         const phone = jid.split('@')[0]
+        const pn = msg.pushName || phone; const labelN = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho']
+        const clean = pn.toLowerCase().trim(); let dn = (clean.length < 3 || labelN.includes(clean)) ? phone : pn
+        // Format phone-based names nicely
+        if (/^\d+$/.test(dn.replace(/\D/g, ''))) { var raw = dn.replace(/^55/, ''); var fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3'); if (fmt !== raw) dn = fmt }
+        const isMe = msg.key.fromMe
+        let contactId = null; const exC = await findContactByPhone(phone, companyId)
         // Handle LID contacts: try to link by pushName
-        if (jid.includes('@lid') && msg.pushName) {
+        if (jid.includes('@lid') && msg.pushName && !exC) {
           const { data: lidMatch } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId).ilike('name', msg.pushName.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().substring(0, 30) + '%').limit(1)
-          if (lidMatch?.length && !exC) {
-            // Create contact for this LID or link to existing
+          if (lidMatch?.length) {
             var lidPhone = normalizePhone(phone)
             const p2 = { name: lidMatch[0].name, phone: lidPhone, source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }
             if (companyId) p2.company_id = companyId
@@ -389,14 +394,10 @@ async function startSession(sessionId, userId, companyId) {
             if (r2.data) contactId = r2.data.id
           }
         }
-        const pn = msg.pushName || phone; const labelN = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho']
-        const clean = pn.toLowerCase().trim(); let dn = (clean.length < 3 || labelN.includes(clean)) ? phone : pn
-        // Format phone-based names nicely
-        if (/^\d+$/.test(dn.replace(/\D/g, ''))) { var raw = dn.replace(/^55/, ''); var fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3'); if (fmt !== raw) dn = fmt }
-        const isMe = msg.key.fromMe
-        let contactId = null; const exC = await findContactByPhone(phone, companyId)
-        if (exC) { contactId = exC.id; await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', contactId) }
-        else { const p = { name: dn, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }; if (companyId) p.company_id = companyId; const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.notes = JSON.stringify({created_by: uEntry.userId}); const r = await supabase.from('contacts').insert(p).select().single(); if (r.data) contactId = r.data.id }
+        if (!contactId) {
+          if (exC) { contactId = exC.id; await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', contactId) }
+          else { const p = { name: dn, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }; if (companyId) p.company_id = companyId; const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.notes = JSON.stringify({created_by: uEntry.userId}); const r = await supabase.from('contacts').insert(p).select().single(); if (r.data) contactId = r.data.id }
+        }
         let chatId = null; const exCh = await findChat(jid, sessionId, companyId)
         if (exCh) {
           chatId = exCh.id; await supabase.from('whatsapp_chats').update({ remote_jid: jid, last_message: { text: txt.substring(0, 200), at: new Date().toISOString() }, last_message_at: new Date().toISOString(), unread_count: isMe ? (exCh.unread_count || 0) : (exCh.unread_count || 0) + 1, contact_name: dn }).eq('id', chatId)
