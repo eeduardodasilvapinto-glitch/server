@@ -69,14 +69,29 @@ async function findContactByNameOrPhone(phone, name, companyId) {
   if (data?.length) return data[0]
   return null
 }
-async function findChat(jid, sessionId) {
+async function findChat(jid, sessionId, companyId) {
   const phone = jid.split('@')[0]; const np = normalizePhone(phone)
-  const variants = [jid, phone, phone + '@s.whatsapp.net', np, '55' + np, '55' + np + '@s.whatsapp.net']
+  const variants = [jid, phone, phone + '@s.whatsapp.net', np, '55' + np, '55' + np + '@s.whatsapp.net', '55' + phone, '55' + phone + '@s.whatsapp.net']
+  // Try with session id first
+  let found = null
   for (const v of variants) {
     let q = supabase.from('whatsapp_chats').select('id,unread_count').eq('remote_jid', v)
     if (sessionId) q = q.eq('session_id', sessionId)
     const { data } = await q.limit(1)
-    if (data?.length) return data[0]
+    if (data?.length) { found = data[0]; break }
+  }
+  if (found) return found
+  // If not found in current session, try across all sessions for the company
+  if (companyId && sessionId) {
+    const { data: sList } = await supabase.from('whatsapp_sessions').select('id').eq('company_id', companyId)
+    const otherSids = (sList || []).map(s => s.id).filter(id => id !== sessionId)
+    if (otherSids.length) {
+      for (const v of variants) {
+        let q = supabase.from('whatsapp_chats').select('id,unread_count').eq('remote_jid', v).in('session_id', otherSids)
+        const { data } = await q.limit(1)
+        if (data?.length) return data[0]
+      }
+    }
   }
   return null
 }
@@ -261,7 +276,7 @@ async function startSession(sessionId, userId, companyId) {
         const cn = nameMap[jid] || (typeof chat.name === 'string' ? chat.name : (typeof chat.notify === 'string' ? chat.notify : null)) || phone
         let cid = null; const exC = await findContactByPhone(phone, companyId)
         if (exC) { cid = exC.id } else { const p = { name: cn, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }; if (companyId) p.company_id = companyId; const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.notes = JSON.stringify({created_by: uEntry.userId}); const r = await supabase.from('contacts').insert(p).select().single(); if (r.data) cid = r.data.id }
-        const exChat = await findChat(jid, sessionId)
+        const exChat = await findChat(jid, sessionId, companyId)
         if (!exChat) { const cp = { remote_jid: jid, contact_id: cid, contact_name: cn, last_message_at: chat.conversationTimestamp ? new Date(chat.conversationTimestamp * 1000).toISOString() : null, session_id: sessionId }; if (companyId) cp.company_id = companyId; await supabase.from('whatsapp_chats').insert(cp) }
       }
     }
@@ -274,7 +289,7 @@ async function startSession(sessionId, userId, companyId) {
         for (const msg of messages.slice(i, i + 100)) {
           const jid = msg.key?.remoteJid; if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter')) continue
           const phone = jid.split('@')[0]; if (normalizePhone(phone).length >= 14) continue
-          const ec = await findChat(jid, sessionId); if (!ec) continue
+          const ec = await findChat(jid, sessionId, companyId); if (!ec) continue
           const txt = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || ''
           if (!txt) continue
           const tKey = txt.substring(0, 100)
@@ -346,7 +361,7 @@ async function startSession(sessionId, userId, companyId) {
         let contactId = null; const exC = await findContactByPhone(phone, companyId)
         if (exC) { contactId = exC.id; await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', contactId) }
         else { const p = { name: dn, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }; if (companyId) p.company_id = companyId; const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.notes = JSON.stringify({created_by: uEntry.userId}); const r = await supabase.from('contacts').insert(p).select().single(); if (r.data) contactId = r.data.id }
-        let chatId = null; const exCh = await findChat(jid, sessionId)
+        let chatId = null; const exCh = await findChat(jid, sessionId, companyId)
         if (exCh) {
           chatId = exCh.id; await supabase.from('whatsapp_chats').update({ remote_jid: jid, last_message: { text: txt.substring(0, 200), at: new Date().toISOString() }, last_message_at: new Date().toISOString(), unread_count: isMe ? (exCh.unread_count || 0) : (exCh.unread_count || 0) + 1, contact_name: dn }).eq('id', chatId)
         } else {
@@ -766,8 +781,15 @@ const server = http.createServer(async (req, res) => {
           const { data: ct } = await supabase.from('contacts').select('phone,name').eq('id', contactId).limit(1)
           if (ct?.length) {
             const jid = '55' + normalizePhone(ct[0].phone || '') + '@s.whatsapp.net'
-            const { data: nc } = await supabase.from('whatsapp_chats').insert({ remote_jid: jid, contact_id: contactId, contact_name: ct[0].name, session_id: d.sessionId }).select().single()
-            if (nc) chatId = nc.id
+            const companyId = await getCompanyId(d.sessionId)
+            // Check if chat already exists for this JID across all sessions
+            const existing = await findChat(jid, d.sessionId, companyId)
+            if (existing) {
+              chatId = existing.id
+            } else {
+              const { data: nc } = await supabase.from('whatsapp_chats').insert({ remote_jid: jid, contact_id: contactId, contact_name: ct[0].name, session_id: d.sessionId }).select().single()
+              if (nc) chatId = nc.id
+            }
           }
         } else if (chatId.includes('@')) {
           // JID format - find or create chat entry
@@ -1517,7 +1539,7 @@ const server = http.createServer(async (req, res) => {
             if (!phoneNum) continue
             const jid = '55' + phoneNum + '@s.whatsapp.net'
             let chatId = null
-            const exCh = await findChat(jid, sessionId)
+            const exCh = await findChat(jid, sessionId, companyId)
             if (exCh) { chatId = exCh.id } else {
               const p = { remote_jid: jid, contact_name: row.name || phoneNum, session_id: sessionId }; if (companyId) p.company_id = companyId
               const r = await supabase.from('whatsapp_chats').insert(p).select().single()
