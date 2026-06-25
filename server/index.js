@@ -873,21 +873,31 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/check-chat') {
     const cid = url.searchParams.get('chatId')
     if (!cid) { res.writeHead(400); res.end(JSON.stringify({ error: 'chatId required' })); return }
-    const { data: chat } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name,contact_id').eq('id', cid).limit(1)
-    let contact = null
-    if (chat?.length) {
-      if (chat[0].contact_id) {
-        const { data: c } = await supabase.from('contacts').select('name,phone').eq('id', chat[0].contact_id).limit(1)
-        if (c?.length) contact = c[0]
+    let chat = null, contact = null
+    if (cid.startsWith('contact_')) {
+      const contactId = cid.replace('contact_', '')
+      const { data: c } = await supabase.from('contacts').select('id,name,phone').eq('id', contactId).limit(1)
+      if (c?.length) {
+        contact = c[0]
+        chat = { id: cid, remote_jid: contact.phone, contact_id: contact.id, contact_name: contact.name }
       }
-      if (!contact && chat[0].remote_jid) {
-        const np = normalizePhone(chat[0].remote_jid.split('@')[0] || '')
-        const { data: c } = await supabase.from('contacts').select('name,phone').eq('phone', np).limit(1)
-        if (c?.length) contact = c[0]
+    } else {
+      const { data: ch } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name,contact_id').eq('id', cid).limit(1)
+      if (ch?.length) {
+        chat = ch[0]
+        if (chat.contact_id) {
+          const { data: c } = await supabase.from('contacts').select('name,phone').eq('id', chat.contact_id).limit(1)
+          if (c?.length) contact = c[0]
+        }
+        if (!contact && chat.remote_jid) {
+          const np = normalizePhone(chat.remote_jid.split('@')[0] || '')
+          const { data: c } = await supabase.from('contacts').select('name,phone').eq('phone', np).limit(1)
+          if (c?.length) contact = c[0]
+        }
       }
     }
     const session = sessions.get(url.searchParams.get('sid') || '')
-    res.writeHead(200); res.end(JSON.stringify({ chat: chat?.[0] || null, contact: contact || null, hasSocket: !!session?.sock, sessionStatus: session?.status })); return
+    res.writeHead(200); res.end(JSON.stringify({ chat, contact, hasSocket: !!session?.sock, sessionStatus: session?.status })); return
   }
 
   if (pathname === '/check-lids') {
