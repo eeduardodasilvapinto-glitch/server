@@ -1065,6 +1065,37 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (pathname === '/sync-names-from-chats' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId } = JSON.parse(body)
+        if (!sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        const { data: contacts } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId)
+        const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name,contact_id')
+        // Build map: contact_id → most authoritative name from phone normalization
+        const phoneToName = {}
+        if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); if (np && c.name && !/^\d+$/.test(c.name)) phoneToName[np] = c.name }
+        let fixed = 0
+        if (chats) for (const ch of chats) {
+          if (!ch.contact_id) continue
+          const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+          if (!np || !phoneToName[np]) continue
+          const dbName = phoneToName[np]
+          if (dbName && dbName !== ch.contact_name) {
+            await supabase.from('whatsapp_chats').update({ contact_name: dbName }).eq('id', ch.id)
+            await supabase.from('contacts').update({ name: dbName }).eq('id', ch.contact_id)
+            fixed++
+          }
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, fixed })); return
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
   if (pathname === '/diag') {
     const tables = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
     const result = {}

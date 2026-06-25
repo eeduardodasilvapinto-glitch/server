@@ -1804,6 +1804,7 @@ function renderDisparoContactList() {
         <button class="btn btn-save" onclick="VeltrisWPP.toggleBulkSelect()" style="font-size:0.7rem;padding:7px 14px;border-radius:100px;background:var(--surface2);border:1px solid var(--border);color:var(--text);cursor:pointer;font-family:inherit" id="wcBulkBtn"><i class="fi fi-rr-pencil"></i> Editar em massa</button>
         <button class="btn btn-save" onclick="VeltrisWPP.showAddLeadForm()" style="font-size:0.7rem">+ Novo Cliente</button>
         <button class="btn btn-outline" onclick="VeltrisWPP.findAndMergeDups()" style="font-size:0.65rem;padding:5px 10px;border-radius:100px" title="Unificar duplicatas"><i class="fi fi-rr-link"></i></button>
+        <button class="btn btn-outline" onclick="VeltrisWPP.syncNamesFromChats()" style="font-size:0.65rem;padding:5px 10px;border-radius:100px" title="Restaurar nomes"><i class="fi fi-rr-user"></i></button>
       </div>
       <div id="wcBulkBar" style="display:none;padding:6px 0;gap:6px;align-items:center">
         <span style="font-size:0.7rem;color:var(--text-dim)" id="wcBulkCount">0 selecionados</span>
@@ -2917,6 +2918,16 @@ function renderDisparoContactList() {
     } catch (e) {}
   }
 
+  async function syncNamesFromChats() {
+    if (!S._serverSessionId) { if (typeof showToast === 'function') showToast('Conecte o WhatsApp primeiro'); return }
+    try {
+      var r = await fetch(_wppServerUrl + '/sync-names-from-chats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: S._serverSessionId }) })
+      var d = await r.json()
+      if (typeof showToast === 'function') showToast(d.fixed + ' nomes restaurados')
+      if (d.fixed > 0) { S.leads = []; renderClientes() }
+    } catch (e) { console.warn('syncNamesFromChats error', e) }
+  }
+
   /* ============================ INIT ============================ */
   async function init() {
     S.currentUser = getCurrentUserId();
@@ -3043,6 +3054,7 @@ function renderDisparoContactList() {
     switchTab,
     findAndMergeDups,
     showMergeLog,
+    syncNamesFromChats,
   };
 })();
 
