@@ -1337,28 +1337,17 @@ const server = http.createServer(async (req, res) => {
           await supabase.from('whatsapp_chats').update({ contact_id: null, contact_name: newContactName }).eq('id', ch.id)
           unlinked++
         }
-        // Also handle orphan LID chats (no contact_id) — only exact name match
+        // Also handle orphan LID chats (no contact_id) — rename only, no auto-link
         for (const ch of lidChats) {
           if (ch.contact_id) continue
           const jid = ch.remote_jid || ''
           const np = normalizePhone(jid.split('@')[0] || '')
           if (sessionPhones.has(np)) continue
-          // Try exact match first
-          if (ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, '')) && ch.contact_name.length > 2) {
-            let match = (contacts || []).find(function(c) { return c.name === ch.contact_name })
-            // If no exact match, try unique first word
-            if (!match) {
-              const firstWord = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
-              if (firstWord && firstWord.length > 2) {
-                const nameMatches = (contacts || []).filter(function(c) { return c.name && c.name.toLowerCase().startsWith(firstWord.toLowerCase()) })
-                if (nameMatches.length === 1) match = nameMatches[0]
-              }
-            }
-            if (match) {
-              await supabase.from('whatsapp_chats').update({ contact_id: match.id, contact_name: match.name }).eq('id', ch.id)
-              relinked++
-            }
-          }
+          const raw = np.replace(/^55/, '')
+          const fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
+          const newName = fmt !== raw ? fmt : ('LID-' + raw.slice(-6))
+          await supabase.from('whatsapp_chats').update({ contact_name: newName }).eq('id', ch.id)
+          relinked++
         }
         res.writeHead(200); res.end(JSON.stringify({ ok: true, unlinked, relinked })); return
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
@@ -1490,52 +1479,22 @@ const server = http.createServer(async (req, res) => {
             }
           }
         }
-        // Step 3: Find chats with @lid that have NO contact_id (orphan LID chats)
-        let orphanedLinked = 0, orphanedRenamed = 0
+        // Step 3: Find chats with @lid that have NO contact_id (orphan LID chats) — rename only, no auto-link
+        let orphanedRenamed = 0
         if (chats) for (const ch of chats) {
           const jid = ch.remote_jid || ''
           if (!jid.includes('@lid')) continue
-          if (ch.contact_id) continue // already linked
+          if (ch.contact_id) continue
           const np = normalizePhone(jid.split('@')[0] || '')
-          // Skip own session phone
-          if (sessionPhones.has(np)) { continue }
-          let match = null
-          // 3a. Try by phone number match in contacts
-          if (!match && contactByPhone[np]) {
-            match = contactByPhone[np]
-          }
-          // 3b. Try by chat contact_name exact match (full string)
-          if (!match && ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, '')) && ch.contact_name.length > 2) {
-            match = (contacts || []).find(function(c) { return c.name === ch.contact_name })
-          }
-          // 3c. Try by first word match ONLY if unique (no other contact starts with same word)
-          if (!match && ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, '')) && ch.contact_name.length > 2) {
-            const firstWord = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
-            if (firstWord && firstWord.length > 2) {
-              const nameMatches = (contacts || []).filter(function(c) { return c.name && c.name.toLowerCase().startsWith(firstWord.toLowerCase()) })
-              if (nameMatches.length === 1) match = nameMatches[0] // Only if unique
-            }
-          }
-          if (match) {
-            // Check if this contact already has another chat (merge)
-            const existingChat = (chats || []).find(function(oc) { return oc.contact_id === match.id && oc.id !== ch.id })
-            if (existingChat) {
-              await supabase.from('whatsapp_messages').update({ chat_id: ch.id }).eq('chat_id', existingChat.id)
-              await supabase.from('whatsapp_chats').delete().eq('id', existingChat.id)
-              mergedChats++
-            }
-            await supabase.from('whatsapp_chats').update({ contact_id: match.id, contact_name: match.name }).eq('id', ch.id)
-            orphanedLinked++
-          } else {
-            // No match — rename chat contact_name to formatted phone
-            const raw = np.replace(/^55/, '')
-            const fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
-            const newName = fmt !== raw ? fmt : np
-            await supabase.from('whatsapp_chats').update({ contact_name: newName }).eq('id', ch.id)
-            orphanedRenamed++
-          }
+          if (sessionPhones.has(np)) continue
+          // Format as LID-XXXX
+          const raw = np.replace(/^55/, '')
+          const fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
+          const newName = fmt !== raw ? fmt : ('LID-' + raw.slice(-6))
+          await supabase.from('whatsapp_chats').update({ contact_name: newName }).eq('id', ch.id)
+          orphanedRenamed++
         }
-        res.writeHead(200); res.end(JSON.stringify({ ok: true, deletedLids, relinked, mergedChats, formatted, orphanedLinked, orphanedRenamed })); return
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, deletedLids, relinked, mergedChats, formatted, orphanedRenamed })); return
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
     return
