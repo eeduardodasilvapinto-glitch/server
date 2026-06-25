@@ -333,7 +333,8 @@ async function startSession(sessionId, userId, companyId) {
       if (!name || /^\d+$/.test(name)) continue
       const ex = await findContactByNameOrPhone(phone, name, companyId)
       if (ex) {
-        if (ex.name !== name) {
+        const existingIsNum = /^\d+$/.test(ex.name.replace(/\D/g, ''))
+        if (existingIsNum && ex.name !== name) {
           await supabase.from('contacts').update({ name, phone: normalizePhone(phone) }).eq('id', ex.id)
           // Update chat name in ALL sessions for this company
           const np = normalizePhone(phone)
@@ -446,7 +447,9 @@ async function syncContacts(sessionId, companyId) {
       if (!name || /^\d+$/.test(name)) continue
       const ex = await findContactByNameOrPhone(phone, name, companyId)
       if (ex) {
-        if (ex.name !== name) {
+        // Only overwrite if existing name is a phone number (not a real name)
+        const existingIsNum = /^\d+$/.test(ex.name.replace(/\D/g, ''))
+        if (existingIsNum && ex.name !== name) {
           await supabase.from('contacts').update({ name, phone: normalizePhone(phone) }).eq('id', ex.id)
           // Update chat name in ANY session for this company
           const np = normalizePhone(phone)
@@ -1042,6 +1045,24 @@ const server = http.createServer(async (req, res) => {
       }
     }
     res.writeHead(200); res.end(JSON.stringify({ ok: true, linked, created })); return
+  }
+
+  if (pathname === '/restore-contact-name' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId, contactId, name } = JSON.parse(body)
+        if (!sessionId || !contactId || !name) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId, contactId, name required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        await supabase.from('contacts').update({ name }).eq('id', contactId).eq('company_id', companyId)
+        // Update chat names too
+        const { data: chats } = await supabase.from('whatsapp_chats').select('id').eq('contact_id', contactId)
+        if (chats) for (const ch of chats) await supabase.from('whatsapp_chats').update({ contact_name: name }).eq('id', ch.id)
+        res.writeHead(200); res.end(JSON.stringify({ ok: true })); return
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
   }
 
   if (pathname === '/diag') {
