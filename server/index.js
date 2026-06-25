@@ -1337,15 +1337,23 @@ const server = http.createServer(async (req, res) => {
           await supabase.from('whatsapp_chats').update({ contact_id: null, contact_name: newContactName }).eq('id', ch.id)
           unlinked++
         }
-        // Also handle orphan LID chats (no contact_id)
+        // Also handle orphan LID chats (no contact_id) — only exact name match
         for (const ch of lidChats) {
           if (ch.contact_id) continue
           const jid = ch.remote_jid || ''
           const np = normalizePhone(jid.split('@')[0] || '')
           if (sessionPhones.has(np)) continue
-          if (ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, '')) && ch.contact_name.length > 1) {
-            const cleanName = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
-            const match = (contacts || []).find(function(c) { return c.name && c.name.toLowerCase().startsWith(cleanName.toLowerCase()) })
+          // Try exact match first
+          if (ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, '')) && ch.contact_name.length > 2) {
+            let match = (contacts || []).find(function(c) { return c.name === ch.contact_name })
+            // If no exact match, try unique first word
+            if (!match) {
+              const firstWord = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
+              if (firstWord && firstWord.length > 2) {
+                const nameMatches = (contacts || []).filter(function(c) { return c.name && c.name.toLowerCase().startsWith(firstWord.toLowerCase()) })
+                if (nameMatches.length === 1) match = nameMatches[0]
+              }
+            }
             if (match) {
               await supabase.from('whatsapp_chats').update({ contact_id: match.id, contact_name: match.name }).eq('id', ch.id)
               relinked++
@@ -1492,20 +1500,21 @@ const server = http.createServer(async (req, res) => {
           // Skip own session phone
           if (sessionPhones.has(np)) { continue }
           let match = null
-          // 3a. Try by contact_name if it's not numeric
-          if (ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, '')) && ch.contact_name.length > 1) {
-            const cleanName = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
-            if (cleanName && cleanName.length > 1) {
-              match = (contacts || []).find(function(c) { return c.name && c.name.toLowerCase().startsWith(cleanName.toLowerCase()) })
-            }
-          }
-          // 3b. Try by phone number match in contacts (if we have the number)
+          // 3a. Try by phone number match in contacts
           if (!match && contactByPhone[np]) {
             match = contactByPhone[np]
           }
-          // 3c. Try by chat contact_name exact match (first name)
-          if (!match && ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, ''))) {
+          // 3b. Try by chat contact_name exact match (full string)
+          if (!match && ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, '')) && ch.contact_name.length > 2) {
             match = (contacts || []).find(function(c) { return c.name === ch.contact_name })
+          }
+          // 3c. Try by first word match ONLY if unique (no other contact starts with same word)
+          if (!match && ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, '')) && ch.contact_name.length > 2) {
+            const firstWord = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
+            if (firstWord && firstWord.length > 2) {
+              const nameMatches = (contacts || []).filter(function(c) { return c.name && c.name.toLowerCase().startsWith(firstWord.toLowerCase()) })
+              if (nameMatches.length === 1) match = nameMatches[0] // Only if unique
+            }
           }
           if (match) {
             // Check if this contact already has another chat (merge)
