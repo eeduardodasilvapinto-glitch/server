@@ -375,28 +375,37 @@ async function startSession(sessionId, userId, companyId) {
         const txt = mType === 'audio' ? 'Audio' : mType === 'image' ? 'Foto' : m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || ''
         if (!txt && !mediaUrl) { msgSkippedNoText++; const msgKeys = Object.keys(m); if (msgTypesSeen.length < 500) msgTypesSeen += (msgTypesSeen ? ',' : '') + msgKeys.join('|'); if (msgJidsReceived.length < 500) msgJidsReceived += (msgJidsReceived ? ',' : '') + jid; continue }
         const phone = jid.split('@')[0]
+        const isMe = msg.key.fromMe
+        // If message was SENT by the user (fromMe), don't create contacts
+        if (isMe) {
+          const exCh = await findChat(jid, sessionId, companyId)
+          if (exCh) {
+            const txtShort = txt.substring(0, 200)
+            await supabase.from('whatsapp_chats').update({ remote_jid: jid, last_message: { text: txtShort, at: new Date().toISOString() }, last_message_at: new Date().toISOString(), contact_name: exCh.contact_name || dn }).eq('id', exCh.id)
+            const { data: dup } = await supabase.from('whatsapp_messages').select('id').eq('chat_id', exCh.id).eq('text', txt.substring(0, 100)).gte('created_at', new Date(Date.now() - 600000).toISOString()).limit(1)
+            if (!dup?.length) {
+              await supabase.from('whatsapp_messages').insert({ chat_id: exCh.id, session_id: sessionId, text: txt, direction: 'outgoing', created_at: new Date(msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()).toISOString() })
+              trimMessages(exCh.id); msgProcessed++
+            }
+          }
+          continue
+        }
+        // Only for incoming messages: find or create contact
         const pn = msg.pushName || phone; const labelN = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho']
         const clean = pn.toLowerCase().trim(); let dn = (clean.length < 3 || labelN.includes(clean)) ? phone : pn
-        // Format phone-based names nicely
         if (/^\d+$/.test(dn.replace(/\D/g, ''))) { var raw = dn.replace(/^55/, ''); var fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3'); if (fmt !== raw) dn = fmt }
-        const isMe = msg.key.fromMe
         let contactId = null; const exC = await findContactByPhone(phone, companyId)
-        // Handle LID contacts: try to link by pushName
+        // Handle LID: try to link to existing contact by pushName instead of creating new
         if (jid.includes('@lid') && msg.pushName && !exC) {
-          const { data: lidMatch } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId).ilike('name', msg.pushName.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().substring(0, 30) + '%').limit(1)
+          const cleanName = msg.pushName.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().substring(0, 30)
+          const { data: lidMatch } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId).ilike('name', cleanName + '%').limit(1)
           if (lidMatch?.length) {
-            var lidPhone = normalizePhone(phone)
-            const p2 = { name: lidMatch[0].name, phone: lidPhone, source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }
-            if (companyId) p2.company_id = companyId
-            const uEntry2 = sessions.get(sessionId)
-            if (uEntry2?.userId) p2.notes = JSON.stringify({created_by: uEntry2.userId})
-            const r2 = await supabase.from('contacts').insert(p2).select().single()
-            if (r2.data) contactId = r2.data.id
+            contactId = lidMatch[0].id  // REUSE existing contact
           }
         }
-        if (!contactId) {
-          if (exC) { contactId = exC.id; await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', contactId) }
-          else { const p = { name: dn, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }; if (companyId) p.company_id = companyId; const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.notes = JSON.stringify({created_by: uEntry.userId}); const r = await supabase.from('contacts').insert(p).select().single(); if (r.data) contactId = r.data.id }
+        if (exC) { contactId = exC.id; await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', contactId) }
+        else if (!contactId) {
+          const p = { name: dn, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }; if (companyId) p.company_id = companyId; const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.notes = JSON.stringify({created_by: uEntry.userId}); const r = await supabase.from('contacts').insert(p).select().single(); if (r.data) contactId = r.data.id
         }
         let chatId = null; const exCh = await findChat(jid, sessionId, companyId)
         if (exCh) {
@@ -610,8 +619,11 @@ const server = http.createServer(async (req, res) => {
     const byPhone = {}; const conByPhone = {}
     if (cont) for (const c of cont) { const np = normalizePhone(c.phone || ''); byPhone[np] = c.name || np; conByPhone[np] = c }
     const seen = {}; const result = []
-    if (wa) { for (const ch of wa) { const jid = ch.remote_jid || ''; if (jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter') || jid === 'status@broadcast') continue; const np = normalizePhone(jid.split('@')[0] || ''); if (!np || np.length >= 20 || seen[np]) continue; seen[np] = true; const ct = conByPhone[np]; result.push({ id: ch.id, remote_jid: ch.remote_jid, contact_id: ch.contact_id, contact_name: ct?.name || ch.contact_name, last_message: ch.last_message, last_message_at: ch.last_message_at, unread_count: ch.unread_count || 0, contact_phone: ct?.phone || np, contact_stage: ct?.stage || null, contact_tags: ct?.tags || null, session_id: sid }) } }
-    if (cont) { for (const c of cont) { const np = normalizePhone(c.phone || ''); if (!np || np.length >= 20 || seen[np]) continue; seen[np] = true; if (c.source !== 'whatsapp' && !c.name) continue; result.push({ id: 'contact_' + c.id, remote_jid: np, contact_id: c.id, contact_name: c.name || np, last_message: null, last_message_at: null, unread_count: 0, contact_phone: c.phone || np, contact_stage: c.stage || null, contact_tags: c.tags || null, session_id: sid }) } }
+    // Get session phone to filter out own LID
+    const sessEntry = sessions.get(sid)
+    const sessPhoneNormalized = normalizePhone(sessEntry?.phone || '')
+    if (wa) { for (const ch of wa) { const jid = ch.remote_jid || ''; if (jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter') || jid === 'status@broadcast') continue; const np = normalizePhone(jid.split('@')[0] || ''); if (!np || np.length >= 20 || seen[np] || (sessPhoneNormalized && np === sessPhoneNormalized)) continue; seen[np] = true; const ct = conByPhone[np]; result.push({ id: ch.id, remote_jid: ch.remote_jid, contact_id: ch.contact_id, contact_name: ct?.name || ch.contact_name, last_message: ch.last_message, last_message_at: ch.last_message_at, unread_count: ch.unread_count || 0, contact_phone: ct?.phone || np, contact_stage: ct?.stage || null, contact_tags: ct?.tags || null, session_id: sid }) } }
+    if (cont) { for (const c of cont) { const np = normalizePhone(c.phone || ''); if (!np || np.length >= 20 || seen[np] || (sessPhoneNormalized && np === sessPhoneNormalized)) continue; seen[np] = true; if (c.source !== 'whatsapp' && !c.name) continue; result.push({ id: 'contact_' + c.id, remote_jid: np, contact_id: c.id, contact_name: c.name || np, last_message: null, last_message_at: null, unread_count: 0, contact_phone: c.phone || np, contact_stage: c.stage || null, contact_tags: c.tags || null, session_id: sid }) } }
     res.writeHead(200); res.end(JSON.stringify({ chats: result })); return
   }
 
@@ -1092,6 +1104,102 @@ const server = http.createServer(async (req, res) => {
           }
         }
         res.writeHead(200); res.end(JSON.stringify({ ok: true, fixed })); return
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/fix-lid-mess' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId } = JSON.parse(body)
+        if (!sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        const entry = sessions.get(sessionId)
+        const sessionPhone = entry?.phone || ''
+        const { data: lidChats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name').like('remote_jid', '%@lid')
+        const { data: contacts } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId)
+        let renamed = 0, linked = 0, deleted = 0
+        // Build phone-to-contact map
+        const contactByPhone = {}
+        if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); if (np) contactByPhone[np] = c }
+        if (lidChats) for (const ch of lidChats) {
+          const np = normalizePhone(ch.remote_jid.split('@')[0] || '')
+          // Skip if this LID is the user's own phone
+          if (sessionPhone && normalizePhone(sessionPhone) === np) {
+            await supabase.from('whatsapp_chats').delete().eq('id', ch.id)
+            // Also delete the contact if it's a whatsapp-only orphan
+            if (ch.contact_id) { const { data: orphan } = await supabase.from('contacts').select('id').eq('id', ch.contact_id).eq('source', 'whatsapp').limit(1); if (orphan?.length) await supabase.from('contacts').delete().eq('id', ch.contact_id) }
+            deleted++; continue
+          }
+          // If chat has no contact_id, try to link
+          if (!ch.contact_id) {
+            // Find by phone first
+            let match = contactByPhone[np]
+            // Then by name
+            if (!match && ch.contact_name) {
+              const cleanName = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim()
+              match = (contacts || []).find(c => c.name.toLowerCase().startsWith(cleanName.substring(0, 15).toLowerCase()))
+            }
+            if (match) {
+              await supabase.from('whatsapp_chats').update({ contact_id: match.id, contact_name: match.name }).eq('id', ch.id)
+              linked++
+            } else if (ch.contact_name && !/^\d+$/.test(ch.contact_name)) {
+              // Create contact for this LID with the chat's name
+              const p = { name: ch.contact_name, phone: np, source: 'whatsapp', stage: 'novo', score: 0, company_id: companyId }
+              const r = await supabase.from('contacts').insert(p).select().single()
+              if (r.data) { await supabase.from('whatsapp_chats').update({ contact_id: r.data.id }).eq('id', ch.id); linked++ }
+            }
+          } else if (ch.contact_name && /^\d+$/.test(ch.contact_name.replace(/\D/g, ''))) {
+            // Chat has contact_id but name is numeric: rename from contact
+            const ct = (contacts || []).find(c => c.id === ch.contact_id)
+            if (ct && ct.name && !/^\d+$/.test(ct.name)) {
+              await supabase.from('whatsapp_chats').update({ contact_name: ct.name }).eq('id', ch.id)
+              renamed++
+            }
+          }
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, deleted, linked, renamed })); return
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/fix-name-bug' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId } = JSON.parse(body)
+        if (!sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        const entry = sessions.get(sessionId)
+        const sessionPhone = normalizePhone(entry?.phone || '')
+        const { data: contacts } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId)
+        const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name')
+        // Build phone-to-contact map for lookup
+        const contactByPhone = {}
+        if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); if (np) contactByPhone[np] = c }
+        let fixed = 0, deleted = 0
+        // Detect contacts named like a phone number (overwritten by sync)
+        if (contacts) for (const c of contacts) {
+          if (/^\d+$/.test(c.name.replace(/\D/g, ''))) {
+            // Name is numeric: try to restore from chats
+            const np = normalizePhone(c.phone || '')
+            const ch = (chats || []).find(ch => ch.remote_jid && normalizePhone(ch.remote_jid.split('@')[0] || '') === np)
+            if (ch && ch.contact_name && !/^\d+$/.test(ch.contact_name)) {
+              await supabase.from('contacts').update({ name: ch.contact_name }).eq('id', c.id)
+              fixed++
+            } else if (contactByPhone[np] && contactByPhone[np].id !== c.id && !/^\d+$/.test(contactByPhone[np].name)) {
+              // Another contact has the right name for this phone: delete this one
+              await supabase.from('contacts').delete().eq('id', c.id)
+              deleted++
+            }
+          }
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, fixed, deleted })); return
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
     return
