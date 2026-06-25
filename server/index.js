@@ -31,7 +31,7 @@ const sessions = new Map()
 const dailySent = {}
 const DAILY_LIMIT_DEFAULT = 500
 
-let msgUpsertCount = 0, msgSkippedNoMsg = 0, msgSkippedGroup = 0, msgSkippedLid = 0, msgSkippedNoText = 0, msgProcessed = 0, msgTypesSeen = ''
+let msgUpsertCount = 0, msgSkippedNoMsg = 0, msgSkippedGroup = 0, msgSkippedLid = 0, msgSkippedNoText = 0, msgProcessed = 0, msgTypesSeen = '', msgNotifyCount = 0, msgNonNotifyTypes = ''
 let msgJidsReceived = ''
 
 function normalizePhone(raw) {
@@ -349,7 +349,11 @@ async function startSession(sessionId, userId, companyId) {
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     msgUpsertCount++
-    if (type !== 'notify') return
+    if (type !== 'notify') {
+      if (msgNonNotifyTypes.length < 200) msgNonNotifyTypes += (msgNonNotifyTypes ? ',' : '') + (type || 'undefined')
+      return
+    }
+    msgNotifyCount++
     for (const msg of messages) {
       try {
         if (!msg.message) { msgSkippedNoMsg++; continue }
@@ -548,7 +552,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/msg-stats') {
-    res.writeHead(200); res.end(JSON.stringify({ msgUpsertCount, msgSkippedNoMsg, msgSkippedGroup, msgSkippedLid, msgSkippedNoText, msgProcessed, msgTypesSeen: msgTypesSeen.slice(0,500), msgJidsReceived: msgJidsReceived.slice(0,500) })); return
+    res.writeHead(200); res.end(JSON.stringify({ msgUpsertCount, msgNotifyCount, msgNonNotifyTypes: msgNonNotifyTypes.slice(0,200), msgSkippedNoMsg, msgSkippedGroup, msgSkippedLid, msgSkippedNoText, msgProcessed, msgTypesSeen: msgTypesSeen.slice(0,500), msgJidsReceived: msgJidsReceived.slice(0,500) })); return
   }
 
   if (pathname === '/contacts') {
