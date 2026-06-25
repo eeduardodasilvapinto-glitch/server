@@ -249,6 +249,17 @@ async function startSession(sessionId, userId, companyId) {
     if (connection && entry.qrCode) { entry.qrCode = null; await supabase.from('whatsapp_sessions').update({ qr_code: null }).eq('id', sessionId) }
     if (connection === 'open') {
       entry.status = 'connected'; entry.phone = (sock.user?.id || '').split(':')[0] || ''
+      // Disconnect any other sessions with the same phone number
+      if (entry.phone) {
+        for (const [otherId, otherEntry] of sessions) {
+          if (otherId !== sessionId && otherEntry.phone === entry.phone && otherEntry.status === 'connected') {
+            otherEntry.status = 'disconnected'; otherEntry.sock = null; stopOutgoingPump.call(otherEntry)
+            if (otherEntry.outgoingInterval) { clearTimeout(otherEntry.outgoingInterval); otherEntry.outgoingInterval = null }
+            supabase.from('whatsapp_sessions').update({ status: 'disconnected' }).eq('id', otherId).then(function(){}).catch(function(){})
+            sessions.delete(otherId)
+          }
+        }
+      }
       startOutgoingPump()
       await supabase.from('whatsapp_sessions').update({ status: 'connected', phone: entry.phone, qr_code: null }).eq('id', sessionId)
       setTimeout(() => syncContacts(sessionId, companyId), 5000)
