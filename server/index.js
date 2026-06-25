@@ -1288,9 +1288,9 @@ const server = http.createServer(async (req, res) => {
         if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ error: 'No company' })); return }
         const entry = sessions.get(sessionId)
         const sessionPhone = normalizePhone(entry?.phone || '')
-        // Load all data
-        const { data: contacts } = await supabase.from('contacts').select('id,name,phone,source').eq('company_id', companyId)
-        const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name,session_id')
+        // Load all data (use larger limit to avoid Supabase 1000-row cap)
+        const { data: contacts } = await supabase.from('contacts').select('id,name,phone,source').eq('company_id', companyId).limit(10000)
+        const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name,session_id').limit(10000)
         const { data: sessionsList } = await supabase.from('whatsapp_sessions').select('id,phone').eq('company_id', companyId)
         const sessionPhones = new Set()
         if (sessionsList) for (const s of sessionsList) { const np = normalizePhone(s.phone || ''); if (np) sessionPhones.add(np) }
