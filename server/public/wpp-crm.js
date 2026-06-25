@@ -2920,7 +2920,6 @@ function renderDisparoContactList() {
       }
     } catch (e) {}
   }
-  }
 
   /* ============================ INIT ============================ */
   async function init() {
