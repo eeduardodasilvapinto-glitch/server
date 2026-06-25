@@ -30,6 +30,8 @@ const sessions = new Map()
 // Daily send limits per company
 const dailySent = {}
 const DAILY_LIMIT_DEFAULT = 500
+// Merge log storage (in-memory, persists per server restart)
+const mergeLogs = {}
 
 let msgUpsertCount = 0, msgSkippedNoMsg = 0, msgSkippedGroup = 0, msgSkippedNoText = 0, msgProcessed = 0, msgTypesSeen = '', msgNotifyCount = 0, msgNonNotifyTypes = '', msgErrors = ''
 let msgJidsReceived = ''
@@ -372,6 +374,20 @@ async function startSession(sessionId, userId, companyId) {
         const txt = mType === 'audio' ? 'Audio' : mType === 'image' ? 'Foto' : m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || ''
         if (!txt && !mediaUrl) { msgSkippedNoText++; const msgKeys = Object.keys(m); if (msgTypesSeen.length < 500) msgTypesSeen += (msgTypesSeen ? ',' : '') + msgKeys.join('|'); if (msgJidsReceived.length < 500) msgJidsReceived += (msgJidsReceived ? ',' : '') + jid; continue }
         const phone = jid.split('@')[0]
+        // Handle LID contacts: try to link by pushName
+        if (jid.includes('@lid') && msg.pushName) {
+          const { data: lidMatch } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId).ilike('name', msg.pushName.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().substring(0, 30) + '%').limit(1)
+          if (lidMatch?.length && !exC) {
+            // Create contact for this LID or link to existing
+            var lidPhone = normalizePhone(phone)
+            const p2 = { name: lidMatch[0].name, phone: lidPhone, source: 'whatsapp', stage: 'novo', score: 0, last_contacted_at: new Date().toISOString() }
+            if (companyId) p2.company_id = companyId
+            const uEntry2 = sessions.get(sessionId)
+            if (uEntry2?.userId) p2.notes = JSON.stringify({created_by: uEntry2.userId})
+            const r2 = await supabase.from('contacts').insert(p2).select().single()
+            if (r2.data) contactId = r2.data.id
+          }
+        }
         const pn = msg.pushName || phone; const labelN = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho']
         const clean = pn.toLowerCase().trim(); let dn = (clean.length < 3 || labelN.includes(clean)) ? phone : pn
         // Format phone-based names nicely
@@ -991,6 +1007,43 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200); res.end(JSON.stringify({ ok: true, linked, nameFixed })); return
   }
 
+  if (pathname === '/fix-lid-chats') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const companyId = await getCompanyId(sid)
+    const { data: lidChats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name').like('remote_jid', '%@lid')
+    const { data: contacts } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId)
+    let linked = 0, created = 0
+    if (lidChats) for (const ch of lidChats) {
+      if (ch.contact_id) continue
+      const np = normalizePhone(ch.remote_jid.split('@')[0] || '')
+      // Try to find contact by phone first
+      let match = null
+      if (contacts) match = contacts.find(c => normalizePhone(c.phone || '') === np)
+      // Try by name if no phone match
+      if (!match && ch.contact_name) {
+        const cleanName = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
+        if (cleanName) {
+          const { data: byName } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId).ilike('name', cleanName + '%').limit(1)
+          if (byName?.length) match = byName[0]
+        }
+      }
+      if (match) {
+        await supabase.from('whatsapp_chats').update({ contact_id: match.id, contact_name: match.name }).eq('id', ch.id)
+        linked++
+      } else if (ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, ''))) {
+        // Create contact for this LID
+        const p = { name: ch.contact_name, phone: np, source: 'whatsapp', stage: 'novo', score: 0, company_id: companyId }
+        const r = await supabase.from('contacts').insert(p).select().single()
+        if (r.data) {
+          await supabase.from('whatsapp_chats').update({ contact_id: r.data.id }).eq('id', ch.id)
+          created++
+        }
+      }
+    }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, linked, created })); return
+  }
+
   if (pathname === '/diag') {
     const tables = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
     const result = {}
@@ -1103,6 +1156,103 @@ const server = http.createServer(async (req, res) => {
       }
     }
     res.writeHead(200); res.end(JSON.stringify({ ok: true, updated })); return
+  }
+
+  if (pathname === '/find-dup-contacts') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const companyId = await getCompanyId(sid)
+    if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ dups: [] })); return }
+    const { data: all } = await supabase.from('contacts').select('id,name,phone,source,stage,created_at').eq('company_id', companyId)
+    const byPhone = {}
+    if (all) for (const c of all) {
+      const np = normalizePhone(c.phone || '')
+      if (!np) continue
+      if (!byPhone[np]) byPhone[np] = []
+      byPhone[np].push(c)
+    }
+    const dups = []
+    for (const [np, list] of Object.entries(byPhone)) {
+      if (list.length < 2) continue
+      list.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+      const keep = list[0]
+      dups.push({ phone: np, contacts: list, suggestedKeepId: keep.id, suggestedKeepName: keep.name })
+    }
+    res.writeHead(200); res.end(JSON.stringify({ dups })); return
+  }
+
+  if (pathname === '/merge-dup-contacts' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId, merges } = JSON.parse(body)
+        if (!sessionId || !merges?.length) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId and merges required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ merged: 0, errors: [] })); return }
+        const log = []
+        const errors = []
+        for (const m of merges) {
+          try {
+            const keepId = m.keepId, removeId = m.removeId, finalName = m.name
+            if (!keepId || !removeId) continue
+            // Transfer chats to kept contact
+            const { data: chats } = await supabase.from('whatsapp_chats').select('id').eq('contact_id', removeId)
+            if (chats?.length) {
+              await supabase.from('whatsapp_chats').update({ contact_id: keepId, contact_name: finalName }).eq('contact_id', removeId)
+            }
+            // Transfer cadence actions
+            const { data: actions } = await supabase.from('cadence_actions').select('id').eq('contact_id', removeId)
+            if (actions?.length) await supabase.from('cadence_actions').update({ contact_id: keepId }).eq('contact_id', removeId)
+            // Update kept contact name
+            await supabase.from('contacts').update({ name: finalName }).eq('id', keepId)
+            // Delete the duplicate
+            const { data: removed } = await supabase.from('contacts').select('name,phone').eq('id', removeId).limit(1)
+            await supabase.from('contacts').delete().eq('id', removeId)
+            log.push({ date: new Date().toISOString(), keepId, removeId, phone: m.phone, oldName: removed?.[0]?.name || '', newName: finalName })
+          } catch (e) { errors.push({ removeId: m.removeId, error: e.message }) }
+        }
+        // Store log
+        if (!mergeLogs[companyId]) mergeLogs[companyId] = []
+        mergeLogs[companyId].push(...log)
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, merged: log.length, errors })); return
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/merge-log') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const companyId = await getCompanyId(sid)
+    res.writeHead(200); res.end(JSON.stringify({ log: mergeLogs[companyId] || [] })); return
+  }
+
+  if (pathname === '/revert-merge' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId, index } = JSON.parse(body)
+        if (!sessionId || index === undefined) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId and index required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        const logs = mergeLogs[companyId]
+        if (!logs?.length || index >= logs.length) { res.writeHead(200); res.end(JSON.stringify({ ok: false, error: 'No log entry at index' })); return }
+        const entry = logs[index]
+        // Restore removed contact
+        const { data: existing } = await supabase.from('contacts').select('id').eq('phone', entry.phone).limit(1)
+        if (existing?.length) { res.writeHead(200); res.end(JSON.stringify({ ok: false, error: 'Contact already exists, cannot revert' })); return }
+        const { data: restored } = await supabase.from('contacts').insert({ id: entry.removeId, name: entry.oldName, phone: entry.phone, source: 'manual', stage: 'novo', score: 0, company_id: companyId }).select().single()
+        // Transfer chats back
+        if (restored) {
+          await supabase.from('whatsapp_chats').update({ contact_id: entry.removeId, contact_name: entry.oldName }).eq('contact_id', entry.keepId)
+          await supabase.from('cadence_actions').update({ contact_id: entry.removeId }).eq('contact_id', entry.keepId)
+        }
+        logs.splice(index, 1)
+        res.writeHead(200); res.end(JSON.stringify({ ok: true })); return
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
   }
 
   if (pathname === '/cleanup-all') {

@@ -566,16 +566,15 @@ window.VeltrisWPP = (() => {
         var cleanPhone = phone.replace(/^55(\d{2})/, '$1').replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
         name = cleanPhone !== phone ? cleanPhone : phone
       }
-      var lastMsgObj = typeof c.last_message === 'string' ? JSON.parse(c.last_message) : c.last_message
-      var lastMsg = lastMsgObj?.text || lastMsgObj || '';
+      var lastMsgObj = typeof c.last_message === 'string' ? (function(){ try { return JSON.parse(c.last_message) } catch(e) { return {} } })() : c.last_message
+      var lastMsg = (lastMsgObj && typeof lastMsgObj === 'object' ? (lastMsgObj.text || '') : String(lastMsgObj || '')).substring(0, 60);
       const unread = c.unread_count || 0;
       const isActive = c.id === S.activeChatId;
       return `<button class="wc-chat-item ${isActive ? 'active' : ''}" onclick="VeltrisWPP.selectChat('${c.id}')">
         <div class="wc-avatar">${initials(name)}</div>
         <div class="wc-chat-info">
           <div class="wc-chat-name">${escHtml(name)}</div>
-          <div class="wc-chat-phone">${escHtml(formatPhone(c.contact_phone || phone || ''))}</div>
-          <div class="wc-chat-preview">${escHtml(lastMsg.substring(0, 60))}</div>
+          <div class="wc-chat-preview">${escHtml(lastMsg)}</div>
         </div>
         <div class="wc-chat-meta">
           <div class="wc-chat-time">${formatDate(c.last_message_at)}</div>
@@ -1808,6 +1807,7 @@ function renderDisparoContactList() {
         </div>
         <button class="btn btn-save" onclick="VeltrisWPP.toggleBulkSelect()" style="font-size:0.7rem;padding:7px 14px;border-radius:100px;background:var(--surface2);border:1px solid var(--border);color:var(--text);cursor:pointer;font-family:inherit" id="wcBulkBtn"><i class="fi fi-rr-pencil"></i> Editar em massa</button>
         <button class="btn btn-save" onclick="VeltrisWPP.showAddLeadForm()" style="font-size:0.7rem">+ Novo Cliente</button>
+        <button class="btn btn-outline" onclick="VeltrisWPP.findAndMergeDups()" style="font-size:0.65rem;padding:5px 10px;border-radius:100px" title="Unificar duplicatas"><i class="fi fi-rr-link"></i></button>
       </div>
       <div id="wcBulkBar" style="display:none;padding:6px 0;gap:6px;align-items:center">
         <span style="font-size:0.7rem;color:var(--text-dim)" id="wcBulkCount">0 selecionados</span>
@@ -2864,6 +2864,64 @@ function renderDisparoContactList() {
     return null;
   }
 
+  async function findAndMergeDups() {
+    if (!S._serverSessionId) { if (typeof showToast === 'function') showToast('Conecte o WhatsApp primeiro'); return }
+    try {
+      var r = await fetch(_wppServerUrl + '/find-dup-contacts?sessionId=' + encodeURIComponent(S._serverSessionId))
+      if (!r.ok) return
+      var d = await r.json()
+      if (!d.dups || !d.dups.length) { if (typeof showToast === 'function') showToast('Nenhuma duplicata encontrada'); return }
+      if (d.dups.length <= 5) {
+        confirmMergeDups(d.dups, 0)
+      } else {
+        var merges = d.dups.map(function(g) { return { keepId: g.suggestedKeepId, removeId: g.contacts[1].id, name: g.suggestedKeepName, phone: g.phone } })
+        var mr = await fetch(_wppServerUrl + '/merge-dup-contacts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: S._serverSessionId, merges: merges }) })
+        var md = await mr.json()
+        if (typeof showToast === 'function') showToast(md.merged + ' duplicatas unificadas')
+        if (md.merged > 0) { S.leads = []; renderClientes() }
+      }
+    } catch (e) { console.warn('findAndMergeDups error', e) }
+  }
+
+  function confirmMergeDups(groups, idx) {
+    if (idx >= groups.length) { if (typeof showToast === 'function') showToast('Unificações concluídas'); S.leads = []; renderClientes(); return }
+    var g = groups[idx]
+    var msg = 'Duplicata ' + (idx + 1) + '/' + groups.length + ' — Telefone: ' + g.phone + '\n\n'
+    g.contacts.forEach(function(c, i) { msg += (i === 0 ? '➡️ ' : '🗑️ ') + c.name + ' (stage: ' + c.stage + ')\n' })
+    msg += '\nDigite o nome para manter (ou Enter para "' + g.suggestedKeepName + '"):'
+    var name = prompt(msg, g.suggestedKeepName)
+    if (name === null) { confirmMergeDups(groups, idx + 1); return }
+    var finalName = name.trim() || g.suggestedKeepName
+    ;(async function(){
+      var mr = await fetch(_wppServerUrl + '/merge-dup-contacts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: S._serverSessionId, merges: [{ keepId: g.suggestedKeepId, removeId: g.contacts[1].id, name: finalName, phone: g.phone }] }) })
+      var md = await mr.json()
+      if (md.merged > 0) if (typeof showToast === 'function') showToast('Unificado como "' + finalName + '"')
+      confirmMergeDups(groups, idx + 1)
+    })()
+  }
+
+  async function showMergeLog() {
+    if (!S._serverSessionId) return
+    try {
+      var r = await fetch(_wppServerUrl + '/merge-log?sessionId=' + encodeURIComponent(S._serverSessionId))
+      if (!r.ok) return
+      var d = await r.json()
+      if (!d.log || !d.log.length) { alert('Nenhuma unificação registrada'); return }
+      var msg = d.log.map(function(e, i) { return (i + 1) + '. ' + e.oldName + ' → ' + e.newName + ' (' + e.phone + ')' }).join('\n')
+      msg += '\n\nDigite o número da unificação para reverter, ou 0 para sair:'
+      var choice = prompt(msg)
+      if (!choice || choice === '0') return
+      var idx = parseInt(choice) - 1
+      if (idx >= 0 && idx < d.log.length) {
+        var rr = await fetch(_wppServerUrl + '/revert-merge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: S._serverSessionId, index: idx }) })
+        var rd = await rr.json()
+        if (rd.ok) { alert('Unificação revertida!'); S.leads = []; renderClientes() }
+        else alert('Erro: ' + (rd.error || ''))
+      }
+    } catch (e) {}
+  }
+  }
+
   /* ============================ INIT ============================ */
   async function init() {
     S.currentUser = getCurrentUserId();
@@ -2988,6 +3046,8 @@ function renderDisparoContactList() {
     },
     backToChatList,
     switchTab,
+    findAndMergeDups,
+    showMergeLog,
   };
 })();
 
