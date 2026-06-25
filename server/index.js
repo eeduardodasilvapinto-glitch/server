@@ -1361,7 +1361,12 @@ const server = http.createServer(async (req, res) => {
             // Could not find real contact — format phone as name
             const raw = np.replace(/^55/, '')
             const fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
-            const newName = fmt !== raw ? fmt : np
+            let newName = fmt !== raw ? fmt : ''
+            if (!newName) {
+              // LID or international number — show last 8 digits
+              const short = raw.length > 8 ? raw.slice(-8) : raw
+              newName = 'LID-' + short
+            }
             await supabase.from('contacts').update({ name: newName }).eq('id', lid.id)
             if (lidChat) await supabase.from('whatsapp_chats').update({ contact_name: newName }).eq('id', lidChat.id)
             formatted++
