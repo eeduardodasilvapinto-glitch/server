@@ -1302,17 +1302,23 @@ const server = http.createServer(async (req, res) => {
         if (!sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
         const companyId = await getCompanyId(sessionId)
         if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ error: 'No company' })); return }
-        // Paginate all chats
-        let allChats = []; let offset = 0; const batchSize = 1000
-        while (true) {
-          const { data: batch } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name').range(offset, offset + batchSize - 1)
-          if (!batch?.length) break
-          allChats = allChats.concat(batch)
-          if (batch.length < batchSize) break
-          offset += batchSize
+        const { data: sessionsList } = await supabase.from('whatsapp_sessions').select('id,phone').eq('company_id', companyId)
+        const sessionPhones = new Set()
+        if (sessionsList) for (const s of sessionsList) { const np = normalizePhone(s.phone || ''); if (np) sessionPhones.add(np) }
+        const sessionIds = (sessionsList || []).map(s => s.id)
+        // Load LID chats by session to avoid cross-company leaks and pagination issues
+        let lidChats = []
+        if (sessionIds.length) {
+          let o = 0; const bs = 1000
+          while (true) {
+            const { data: batch } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name').in('session_id', sessionIds).like('remote_jid', '%@lid').range(o, o + bs - 1)
+            if (!batch?.length) break
+            lidChats = lidChats.concat(batch)
+            if (batch.length < bs) break
+            o += bs
+          }
         }
-        const lidChats = allChats.filter(function(ch) { return ch.remote_jid?.includes('@lid') })
-        const { data: contacts } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId)
+        const { data: contacts } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId).limit(10000)
         let unlinked = 0, relinked = 0
         for (const ch of lidChats) {
           if (!ch.contact_id) continue
