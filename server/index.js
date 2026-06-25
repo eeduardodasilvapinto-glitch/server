@@ -394,7 +394,19 @@ async function startSession(sessionId, userId, companyId) {
         const isMe = msg.key.fromMe
         // If message was SENT by the user (fromMe), don't create contacts
         if (isMe) {
-          const exCh = await findChat(jid, sessionId, companyId)
+          let exCh = await findChat(jid, sessionId, companyId)
+          // If not found by JID, try to find by contact linked to this phone
+          if (!exCh) {
+            const contactForPhone = await findContactByPhone(phone, companyId)
+            if (contactForPhone) {
+              const { data: chatByContact } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name').eq('contact_id', contactForPhone.id).limit(1)
+              if (chatByContact?.length) {
+                exCh = chatByContact[0]
+                // Update remote_jid to current JID for future lookups
+                await supabase.from('whatsapp_chats').update({ remote_jid: jid }).eq('id', exCh.id)
+              }
+            }
+          }
           if (exCh) {
             const txtShort = txt.substring(0, 200)
             await supabase.from('whatsapp_chats').update({ remote_jid: jid, last_message: { text: txtShort, at: new Date().toISOString() }, last_message_at: new Date().toISOString(), contact_name: exCh.contact_name || dn }).eq('id', exCh.id)
