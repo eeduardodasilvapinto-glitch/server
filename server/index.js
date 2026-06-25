@@ -359,13 +359,18 @@ async function startSession(sessionId, userId, companyId) {
         if (!msg.message) { msgSkippedNoMsg++; continue }
         const jid = msg.key.remoteJid
         if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('@newsletter')) { msgSkippedGroup++; continue }
+        // Extract text from nested message formats (ephemeral, viewOnce, edits)
+        let m = msg.message
+        if (m.ephemeralMessage?.message) m = m.ephemeralMessage.message
+        if (m.viewOnceMessage?.message) m = m.viewOnceMessage.message
+        if (m.editMessage?.message) m = m.editMessage.message
+        if (m.protocolMessage) { msgSkippedNoMsg++; continue }
         const mp = jid.split('@')[0]; const np = normalizePhone(mp)
-        if (np.length >= 14) { msgSkippedLid++; continue }
         let mediaUrl = null, mType = 'text'
-        if (msg.message?.audioMessage) { mType = 'audio'; try { const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) }); if (buf) { const fn = sessionId + '_' + msg.key.id + '.ogg'; fs.writeFileSync(path.join(MEDIA_DIR, fn), buf); mediaUrl = '/media/' + fn } } catch (e) {} }
-        if (msg.message?.imageMessage) { mType = 'image'; try { const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) }); if (buf) { const fn = sessionId + '_' + msg.key.id + '.jpg'; fs.writeFileSync(path.join(MEDIA_DIR, fn), buf); mediaUrl = '/media/' + fn } } catch (e) {} }
-        const txt = mType === 'audio' ? 'Audio' : mType === 'image' ? 'Foto' : msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || ''
-        if (!txt && !mediaUrl) { msgSkippedNoText++; const msgKeys = Object.keys(msg.message || {}); if (msgTypesSeen.length < 500) msgTypesSeen += (msgTypesSeen ? ',' : '') + msgKeys.join('|'); if (msgJidsReceived.length < 500) msgJidsReceived += (msgJidsReceived ? ',' : '') + jid; continue }
+        if (m.audioMessage) { mType = 'audio'; try { const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) }); if (buf) { const fn = sessionId + '_' + msg.key.id + '.ogg'; fs.writeFileSync(path.join(MEDIA_DIR, fn), buf); mediaUrl = '/media/' + fn } } catch (e) {} }
+        if (m.imageMessage) { mType = 'image'; try { const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) }); if (buf) { const fn = sessionId + '_' + msg.key.id + '.jpg'; fs.writeFileSync(path.join(MEDIA_DIR, fn), buf); mediaUrl = '/media/' + fn } } catch (e) {} }
+        const txt = mType === 'audio' ? 'Audio' : mType === 'image' ? 'Foto' : m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || ''
+        if (!txt && !mediaUrl) { msgSkippedNoText++; const msgKeys = Object.keys(m); if (msgTypesSeen.length < 500) msgTypesSeen += (msgTypesSeen ? ',' : '') + msgKeys.join('|'); if (msgJidsReceived.length < 500) msgJidsReceived += (msgJidsReceived ? ',' : '') + jid; continue }
         const phone = jid.split('@')[0]
         if (normalizePhone(phone).length >= 14) continue
         const pn = msg.pushName || phone; const labelN = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho']
