@@ -1205,6 +1205,78 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (pathname === '/fix-eduardos' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId } = JSON.parse(body)
+        if (!sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ error: 'No company' })); return }
+        const { data: contacts } = await supabase.from('contacts').select('id,name,phone,notes').eq('company_id', companyId)
+        const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name,session_id')
+        const { data: msgs } = await supabase.from('whatsapp_messages').select('chat_id,text').eq('direction', 'received')
+        const { data: sessions } = await supabase.from('whatsapp_sessions').select('id,phone,user_id').eq('company_id', companyId)
+        // Get session phones to detect own number
+        const sessionPhones = new Set()
+        if (sessions) for (const s of sessions) { const np = normalizePhone(s.phone || ''); if (np) sessionPhones.add(np) }
+        // Build chat_id → received pushName map from messages
+        const pushNameByChat = {}
+        if (msgs) for (const m of msgs) {
+          if (!pushNameByChat[m.chat_id] && m.text && m.text.length < 50) pushNameByChat[m.chat_id] = m.text
+        }
+        // Build phone-to-contact map
+        const contactByPhone = {}
+        if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); if (np) contactByPhone[np] = c }
+        let renamed = 0, deleted = 0, total = 0
+        // Find all "Eduardo Silva" contacts
+        if (contacts) for (const c of contacts) {
+          if (c.name !== 'Eduardo Silva') continue
+          total++
+          const np = normalizePhone(c.phone || '')
+          // 1. Skip if it's the session owner's phone
+          if (sessionPhones.has(np)) {
+            await supabase.from('contacts').delete().eq('id', c.id)
+            await supabase.from('whatsapp_chats').update({ contact_id: null }).eq('contact_id', c.id)
+            deleted++; continue
+          }
+          // 2. Try to find a better name from chats (original contact_name)
+          let newName = null
+          const chat = (chats || []).find(ch => ch.contact_id === c.id || normalizePhone(ch.remote_jid?.split('@')[0] || '') === np)
+          if (chat) {
+            // 2a. Try pushName from received messages
+            const pushNameMsg = pushNameByChat[chat.id]
+            if (pushNameMsg && !/^\d+$/.test(pushNameMsg) && !sessionPhones.has(normalizePhone(pushNameMsg))) {
+              newName = pushNameMsg
+            }
+            // 2b. Try contact_name from chat
+            if (!newName && chat.contact_name && chat.contact_name !== 'Eduardo Silva' && !/^\d+$/.test(chat.contact_name)) {
+              newName = chat.contact_name
+            }
+            // 2c. Try matching by phone with another contact
+            if (!newName) {
+              const other = (contacts || []).find(o => normalizePhone(o.phone || '') === np && o.name !== 'Eduardo Silva' && !/^\d+$/.test(o.name))
+              if (other) newName = other.name
+            }
+          }
+          // 3. If still no name, format the phone number
+          if (!newName) {
+            const raw = np.replace(/^55/, '')
+            const fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
+            newName = fmt !== raw ? fmt : np
+          }
+          // 4. Update contact and chat names
+          await supabase.from('contacts').update({ name: newName }).eq('id', c.id)
+          if (chat) await supabase.from('whatsapp_chats').update({ contact_name: newName }).eq('id', chat.id)
+          renamed++
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, total, renamed, deleted })); return
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
   if (pathname === '/diag') {
     const tables = ['tasks','kanban_columns','kanban_cards','documents','contacts','cadence_actions','cadences','whatsapp_chats','whatsapp_messages','whatsapp_sessions','app_checklist','app_kanban','app_conversations','app_suggestions','app_analyses','app_feedback']
     const result = {}
