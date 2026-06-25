@@ -1387,7 +1387,51 @@ const server = http.createServer(async (req, res) => {
             }
           }
         }
-        res.writeHead(200); res.end(JSON.stringify({ ok: true, deletedLids, relinked, mergedChats, formatted })); return
+        // Step 3: Find chats with @lid that have NO contact_id (orphan LID chats)
+        let orphanedLinked = 0, orphanedRenamed = 0
+        if (chats) for (const ch of chats) {
+          const jid = ch.remote_jid || ''
+          if (!jid.includes('@lid')) continue
+          if (ch.contact_id) continue // already linked
+          const np = normalizePhone(jid.split('@')[0] || '')
+          // Skip own session phone
+          if (sessionPhones.has(np)) { continue }
+          let match = null
+          // 3a. Try by contact_name if it's not numeric
+          if (ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, '')) && ch.contact_name.length > 1) {
+            const cleanName = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
+            if (cleanName && cleanName.length > 1) {
+              match = (contacts || []).find(function(c) { return c.name && c.name.toLowerCase().startsWith(cleanName.toLowerCase()) })
+            }
+          }
+          // 3b. Try by phone number match in contacts (if we have the number)
+          if (!match && contactByPhone[np]) {
+            match = contactByPhone[np]
+          }
+          // 3c. Try by chat contact_name exact match (first name)
+          if (!match && ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, ''))) {
+            match = (contacts || []).find(function(c) { return c.name === ch.contact_name })
+          }
+          if (match) {
+            // Check if this contact already has another chat (merge)
+            const existingChat = (chats || []).find(function(oc) { return oc.contact_id === match.id && oc.id !== ch.id })
+            if (existingChat) {
+              await supabase.from('whatsapp_messages').update({ chat_id: ch.id }).eq('chat_id', existingChat.id)
+              await supabase.from('whatsapp_chats').delete().eq('id', existingChat.id)
+              mergedChats++
+            }
+            await supabase.from('whatsapp_chats').update({ contact_id: match.id, contact_name: match.name }).eq('id', ch.id)
+            orphanedLinked++
+          } else {
+            // No match — rename chat contact_name to formatted phone
+            const raw = np.replace(/^55/, '')
+            const fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
+            const newName = fmt !== raw ? fmt : np
+            await supabase.from('whatsapp_chats').update({ contact_name: newName }).eq('id', ch.id)
+            orphanedRenamed++
+          }
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, deletedLids, relinked, mergedChats, formatted, orphanedLinked, orphanedRenamed })); return
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
     return
