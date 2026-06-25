@@ -391,6 +391,9 @@ async function startSession(sessionId, userId, companyId) {
         const txt = mType === 'audio' ? 'Audio' : mType === 'image' ? 'Foto' : m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || ''
         if (!txt && !mediaUrl) { msgSkippedNoText++; const msgKeys = Object.keys(m); if (msgTypesSeen.length < 500) msgTypesSeen += (msgTypesSeen ? ',' : '') + msgKeys.join('|'); if (msgJidsReceived.length < 500) msgJidsReceived += (msgJidsReceived ? ',' : '') + jid; continue }
         const phone = jid.split('@')[0]
+        const pn = msg.pushName || phone; const labelN = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho']
+        const clean = pn.toLowerCase().trim(); let dn = (clean.length < 3 || labelN.includes(clean)) ? phone : pn
+        if (/^\d+$/.test(dn.replace(/\D/g, ''))) { var raw = dn.replace(/^55/, ''); var fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3'); if (fmt !== raw) dn = fmt }
         const isMe = msg.key.fromMe
         // If message was SENT by the user (fromMe), don't create contacts
         if (isMe) {
@@ -419,9 +422,6 @@ async function startSession(sessionId, userId, companyId) {
           continue
         }
         // Only for incoming messages: find or create contact
-        const pn = msg.pushName || phone; const labelN = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho']
-        const clean = pn.toLowerCase().trim(); let dn = (clean.length < 3 || labelN.includes(clean)) ? phone : pn
-        if (/^\d+$/.test(dn.replace(/\D/g, ''))) { var raw = dn.replace(/^55/, ''); var fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3'); if (fmt !== raw) dn = fmt }
         let contactId = null; const exC = await findContactByPhone(phone, companyId)
         // Handle LID: try to link to existing contact by pushName instead of creating new
         if (jid.includes('@lid') && msg.pushName && !exC) {
