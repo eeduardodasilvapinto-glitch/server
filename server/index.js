@@ -1398,11 +1398,11 @@ const server = http.createServer(async (req, res) => {
         if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); if (np) contactByPhone[np] = c }
         // Track results
         let deletedLids = 0, relinked = 0, mergedChats = 0, formatted = 0
-        // Step 1: Find LID contacts (name === phone or name all digits AND phone >= 13 digits)
+        // Step 1: Find LID contacts (name === phone or name all digits AND phone >= 12 digits)
         const lidContacts = (contacts || []).filter(function(c) {
           if (c.source !== 'whatsapp') return false
           const np = normalizePhone(c.phone || '')
-          if (np.length < 13) return false
+          if (np.length < 12) return false
           const nameIsNum = /^\d+$/.test(c.name.replace(/\D/g, ''))
           return nameIsNum || c.name === c.phone
         })
