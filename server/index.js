@@ -1290,7 +1290,16 @@ const server = http.createServer(async (req, res) => {
         const sessionPhone = normalizePhone(entry?.phone || '')
         // Load all data (use larger limit to avoid Supabase 1000-row cap)
         const { data: contacts } = await supabase.from('contacts').select('id,name,phone,source').eq('company_id', companyId).limit(10000)
-        const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name,session_id').limit(10000)
+        // Load chats in batches to avoid Supabase 1000-row cap
+        let allChats = []; let offset = 0; const batchSize = 1000
+        while (true) {
+          const { data: batch } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name,session_id').range(offset, offset + batchSize - 1)
+          if (!batch?.length) break
+          allChats = allChats.concat(batch)
+          if (batch.length < batchSize) break
+          offset += batchSize
+        }
+        const chats = allChats
         const { data: sessionsList } = await supabase.from('whatsapp_sessions').select('id,phone').eq('company_id', companyId)
         const sessionPhones = new Set()
         if (sessionsList) for (const s of sessionsList) { const np = normalizePhone(s.phone || ''); if (np) sessionPhones.add(np) }
