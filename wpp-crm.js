@@ -2823,7 +2823,7 @@ function renderDisparoContactList() {
     stopPolling();
     S.pollingInterval = setInterval(() => {
       loadChats();
-    }, 15000);
+    }, 8000);
   }
 
   function stopPolling() {
@@ -2833,8 +2833,8 @@ function renderDisparoContactList() {
   function startRealtime() {
     stopRealtime();
     S.realtimeInterval = setInterval(() => {
-      if (!S.activeChatId) return;
-      loadMessages(S.activeChatId);
+      if (S.activeChatId) loadMessages(S.activeChatId);
+      if (S.activeChatId) loadChats();
     }, 5000);
   }
 
