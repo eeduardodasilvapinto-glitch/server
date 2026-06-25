@@ -1326,21 +1326,23 @@ const server = http.createServer(async (req, res) => {
           const lidNp = normalizePhone(ch.remote_jid.split('@')[0] || '')
           const contactNp = normalizePhone(contact.phone || '')
           if (lidNp === contactNp) continue // Correct match
-          // Suspect match: contact_name doesn't match contact name
-          if (ch.contact_name && !/^\d+$/.test(ch.contact_name) && contact.name) {
-            if (!ch.contact_name.toLowerCase().startsWith(contact.name.toLowerCase().substring(0, 5))) {
-              // Unlink suspect LID
-              await supabase.from('whatsapp_chats').update({ contact_id: null, contact_name: 'LID-' + lidNp.slice(-6) }).eq('id', ch.id)
-              unlinked++
-              // Try to find a better contact by chat contact_name
-              const firstName = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
-              if (firstName && firstName.length > 1) {
-                const betterMatch = (contacts || []).find(function(c) { return c.name && c.name.toLowerCase().startsWith(firstName.toLowerCase()) && normalizePhone(c.phone || '') !== contactNp })
-                if (betterMatch) {
-                  await supabase.from('whatsapp_chats').update({ contact_id: betterMatch.id, contact_name: betterMatch.name }).eq('id', ch.id)
-                  relinked++
-                }
-              }
+          // Unlink suspect LID (phone doesn't match)
+          const newContactName = ch.contact_name && !/^\d+$/.test(ch.contact_name) ? ch.contact_name : ('LID-' + lidNp.slice(-6))
+          await supabase.from('whatsapp_chats').update({ contact_id: null, contact_name: newContactName }).eq('id', ch.id)
+          unlinked++
+        }
+        // Also handle orphan LID chats (no contact_id)
+        for (const ch of lidChats) {
+          if (ch.contact_id) continue
+          const jid = ch.remote_jid || ''
+          const np = normalizePhone(jid.split('@')[0] || '')
+          if (sessionPhones.has(np)) continue
+          if (ch.contact_name && !/^\d+$/.test(ch.contact_name.replace(/\D/g, '')) && ch.contact_name.length > 1) {
+            const cleanName = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
+            const match = (contacts || []).find(function(c) { return c.name && c.name.toLowerCase().startsWith(cleanName.toLowerCase()) })
+            if (match) {
+              await supabase.from('whatsapp_chats').update({ contact_id: match.id, contact_name: match.name }).eq('id', ch.id)
+              relinked++
             }
           }
         }
