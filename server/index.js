@@ -874,9 +874,20 @@ const server = http.createServer(async (req, res) => {
     const cid = url.searchParams.get('chatId')
     if (!cid) { res.writeHead(400); res.end(JSON.stringify({ error: 'chatId required' })); return }
     const { data: chat } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name,contact_id').eq('id', cid).limit(1)
-    const { data: contact } = chat?.length && chat[0].contact_id ? await supabase.from('contacts').select('name,phone').eq('id', chat[0].contact_id).limit(1) : { data: null }
+    let contact = null
+    if (chat?.length) {
+      if (chat[0].contact_id) {
+        const { data: c } = await supabase.from('contacts').select('name,phone').eq('id', chat[0].contact_id).limit(1)
+        if (c?.length) contact = c[0]
+      }
+      if (!contact && chat[0].remote_jid) {
+        const np = normalizePhone(chat[0].remote_jid.split('@')[0] || '')
+        const { data: c } = await supabase.from('contacts').select('name,phone').eq('phone', np).limit(1)
+        if (c?.length) contact = c[0]
+      }
+    }
     const session = sessions.get(url.searchParams.get('sid') || '')
-    res.writeHead(200); res.end(JSON.stringify({ chat: chat?.[0] || null, contact: contact?.[0] || null, hasSocket: !!session?.sock, sessionStatus: session?.status })); return
+    res.writeHead(200); res.end(JSON.stringify({ chat: chat?.[0] || null, contact: contact || null, hasSocket: !!session?.sock, sessionStatus: session?.status })); return
   }
 
   if (pathname === '/check-lids') {
@@ -886,6 +897,44 @@ const server = http.createServer(async (req, res) => {
     const lids = (wa || []).filter(function(ch) { var np = normalizePhone(ch.remote_jid?.split('@')[0] || ''); return np.length >= 14 })
     const noContact = (wa || []).filter(function(ch) { var np = normalizePhone(ch.remote_jid?.split('@')[0] || ''); return np.length < 14 && !ch.contact_id })
     res.writeHead(200); res.end(JSON.stringify({ total: wa?.length || 0, lids: lids.length, lidsSample: lids.slice(0, 5), noContact: noContact.length, noContactSample: noContact.slice(0, 5) })); return
+  }
+
+  if (pathname === '/fix-chat-contacts') {
+    const sid = url.searchParams.get('sessionId')
+    if (!sid) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+    const companyId = await getCompanyId(sid)
+    const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name,session_id').eq('session_id', sid)
+    const { data: contacts } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId)
+    const contactByNp = {}
+    if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); if (np) contactByNp[np] = c }
+    let linked = 0, nameFixed = 0
+    if (chats) for (const ch of chats) {
+      const np = normalizePhone(ch.remote_jid?.split('@')[0] || '')
+      if (!np) continue
+      const ct = contactByNp[np]
+      if (ct) {
+        if (!ch.contact_id || ch.contact_id !== ct.id) {
+          await supabase.from('whatsapp_chats').update({ contact_id: ct.id }).eq('id', ch.id)
+          linked++
+        }
+        if (ct.name && ct.name !== ch.contact_name && !/^\d+$/.test(ct.name)) {
+          await supabase.from('whatsapp_chats').update({ contact_name: ct.name }).eq('id', ch.id)
+          nameFixed++
+        }
+      } else {
+        // Create contact for this chat
+        const dn = ch.contact_name || np
+        if (!/^\d+$/.test(dn)) {
+          const p = { name: dn, phone: np, source: 'whatsapp', stage: 'novo', score: 0, company_id: companyId }
+          const r = await supabase.from('contacts').insert(p).select().single()
+          if (r.data) {
+            await supabase.from('whatsapp_chats').update({ contact_id: r.data.id }).eq('id', ch.id)
+            linked++
+          }
+        }
+      }
+    }
+    res.writeHead(200); res.end(JSON.stringify({ ok: true, linked, nameFixed })); return
   }
 
   if (pathname === '/diag') {
