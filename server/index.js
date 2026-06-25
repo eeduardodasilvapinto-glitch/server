@@ -1230,9 +1230,9 @@ const server = http.createServer(async (req, res) => {
         const contactByPhone = {}
         if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); if (np) contactByPhone[np] = c }
         let renamed = 0, deleted = 0, total = 0
-        // Find all "Eduardo Silva" contacts
+        // Find all "Eduardo Silva" contacts OR name === phone (LID numeric)
         if (contacts) for (const c of contacts) {
-          if (c.name !== 'Eduardo Silva') continue
+          if (c.name !== 'Eduardo Silva' && c.name !== c.phone && !/^\d+$/.test(c.name.replace(/\D/g, ''))) continue
           total++
           const np = normalizePhone(c.phone || '')
           // 1. Skip if it's the session owner's phone
@@ -1272,6 +1272,122 @@ const server = http.createServer(async (req, res) => {
           renamed++
         }
         res.writeHead(200); res.end(JSON.stringify({ ok: true, total, renamed, deleted })); return
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/fix-orphan-lids' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId } = JSON.parse(body)
+        if (!sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ error: 'No company' })); return }
+        const entry = sessions.get(sessionId)
+        const sessionPhone = normalizePhone(entry?.phone || '')
+        // Load all data
+        const { data: contacts } = await supabase.from('contacts').select('id,name,phone,source').eq('company_id', companyId)
+        const { data: chats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name,session_id')
+        const { data: sessionsList } = await supabase.from('whatsapp_sessions').select('id,phone').eq('company_id', companyId)
+        const sessionPhones = new Set()
+        if (sessionsList) for (const s of sessionsList) { const np = normalizePhone(s.phone || ''); if (np) sessionPhones.add(np) }
+        // Build phone → contact map
+        const contactByPhone = {}
+        if (contacts) for (const c of contacts) { const np = normalizePhone(c.phone || ''); if (np) contactByPhone[np] = c }
+        // Track results
+        let deletedLids = 0, relinked = 0, mergedChats = 0, formatted = 0
+        // Step 1: Find LID contacts (name === phone or name all digits AND phone >= 13 digits)
+        const lidContacts = (contacts || []).filter(function(c) {
+          if (c.source !== 'whatsapp') return false
+          const np = normalizePhone(c.phone || '')
+          if (np.length < 13) return false
+          const nameIsNum = /^\d+$/.test(c.name.replace(/\D/g, ''))
+          return nameIsNum || c.name === c.phone
+        })
+        for (const lid of lidContacts) {
+          const np = normalizePhone(lid.phone || '')
+          // 1a. Skip if it's the session owner's phone
+          if (sessionPhones.has(np)) {
+            await supabase.from('contacts').delete().eq('id', lid.id)
+            await supabase.from('whatsapp_chats').update({ contact_id: null }).eq('contact_id', lid.id)
+            deletedLids++; continue
+          }
+          // 1b. Find the chat linked to this LID
+          const lidChat = (chats || []).find(function(ch) {
+            return ch.contact_id === lid.id || normalizePhone(ch.remote_jid?.split('@')[0] || '') === np
+          })
+          // 1c. Try to find a real contact to link to
+          let realContact = null
+          // By pushName from chat contact_name
+          if (!realContact && lidChat && lidChat.contact_name && lidChat.contact_name !== lid.name && !/^\d+$/.test(lidChat.contact_name)) {
+            realContact = (contacts || []).find(function(c) { return c.name === lidChat.contact_name && c.id !== lid.id })
+          }
+          // By another contact with the same normalized phone
+          if (!realContact) {
+            realContact = (contacts || []).find(function(c) { return normalizePhone(c.phone || '') === np && c.id !== lid.id && !/^\d+$/.test(c.name) })
+          }
+          // By pushName from chat contact_name (fuzzy)
+          if (!realContact && lidChat && lidChat.contact_name) {
+            const cleanName = lidChat.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
+            if (cleanName && cleanName.length > 1) {
+              realContact = (contacts || []).find(function(c) { return c.name && c.name.toLowerCase().startsWith(cleanName.toLowerCase()) && c.id !== lid.id })
+            }
+          }
+          if (realContact) {
+            // Relink LID chat to real contact
+            if (lidChat) {
+              await supabase.from('whatsapp_chats').update({ contact_id: realContact.id, contact_name: realContact.name }).eq('id', lidChat.id)
+              // Check if there's another chat linked to the same real contact (merge)
+              const otherChat = (chats || []).find(function(ch) { return ch.contact_id === realContact.id && ch.id !== lidChat.id })
+              if (otherChat) {
+                // Move messages from other chat to LID chat
+                await supabase.from('whatsapp_messages').update({ chat_id: lidChat.id }).eq('chat_id', otherChat.id)
+                await supabase.from('whatsapp_chats').delete().eq('id', otherChat.id)
+                mergedChats++
+              }
+            } else {
+              // No chat for LID — just update any chat that had this contact_id
+              const anyChat = (chats || []).find(function(ch) { return ch.contact_id === realContact.id })
+              if (anyChat) {
+                await supabase.from('whatsapp_chats').update({ remote_jid: lidChat?.remote_jid || lid.phone }).eq('id', anyChat.id)
+              }
+            }
+            await supabase.from('contacts').delete().eq('id', lid.id)
+            relinked++
+          } else {
+            // Could not find real contact — format phone as name
+            const raw = np.replace(/^55/, '')
+            const fmt = raw.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
+            const newName = fmt !== raw ? fmt : np
+            await supabase.from('contacts').update({ name: newName }).eq('id', lid.id)
+            if (lidChat) await supabase.from('whatsapp_chats').update({ contact_name: newName }).eq('id', lidChat.id)
+            formatted++
+          }
+        }
+        // Step 2: Find chats with LID-like remote_jid that have contact_id pointing to a deleted/empty contact
+        if (chats) for (const ch of chats) {
+          const jid = ch.remote_jid || ''
+          if (!jid.includes('@lid')) continue
+          if (ch.contact_id) {
+            // Check if the contact still exists
+            const ctExists = (contacts || []).find(function(c) { return c.id === ch.contact_id })
+            if (!ctExists) {
+              // Contact was deleted — find or create a replacement
+              const np = normalizePhone(jid.split('@')[0] || '')
+              let replacement = contactByPhone[np]
+              if (!replacement) {
+                replacement = (contacts || []).find(function(c) { return c.name === ch.contact_name && c.id !== ch.contact_id })
+              }
+              if (replacement) {
+                await supabase.from('whatsapp_chats').update({ contact_id: replacement.id, contact_name: replacement.name }).eq('id', ch.id)
+              }
+            }
+          }
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, deletedLids, relinked, mergedChats, formatted })); return
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
     return
