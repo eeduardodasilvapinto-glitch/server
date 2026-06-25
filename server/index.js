@@ -31,7 +31,7 @@ const sessions = new Map()
 const dailySent = {}
 const DAILY_LIMIT_DEFAULT = 500
 
-let msgUpsertCount = 0, msgSkippedNoMsg = 0, msgSkippedGroup = 0, msgSkippedLid = 0, msgSkippedNoText = 0, msgProcessed = 0, msgTypesSeen = '', msgNotifyCount = 0, msgNonNotifyTypes = ''
+let msgUpsertCount = 0, msgSkippedNoMsg = 0, msgSkippedGroup = 0, msgSkippedNoText = 0, msgProcessed = 0, msgTypesSeen = '', msgNotifyCount = 0, msgNonNotifyTypes = '', msgErrors = ''
 let msgJidsReceived = ''
 
 function normalizePhone(raw) {
@@ -372,7 +372,6 @@ async function startSession(sessionId, userId, companyId) {
         const txt = mType === 'audio' ? 'Audio' : mType === 'image' ? 'Foto' : m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || ''
         if (!txt && !mediaUrl) { msgSkippedNoText++; const msgKeys = Object.keys(m); if (msgTypesSeen.length < 500) msgTypesSeen += (msgTypesSeen ? ',' : '') + msgKeys.join('|'); if (msgJidsReceived.length < 500) msgJidsReceived += (msgJidsReceived ? ',' : '') + jid; continue }
         const phone = jid.split('@')[0]
-        if (normalizePhone(phone).length >= 14) continue
         const pn = msg.pushName || phone; const labelN = ['minha posse','meu imovel','casa','apartamento','reserva','trabalho']
         const clean = pn.toLowerCase().trim(); let dn = (clean.length < 3 || labelN.includes(clean)) ? phone : pn
         // Format phone-based names nicely
@@ -398,7 +397,7 @@ async function startSession(sessionId, userId, companyId) {
             msgProcessed++
           }
         }
-      } catch (e) { logger.error({ sessionId, error: e.message }, 'Msg error') }
+      } catch (e) { if (msgErrors.length < 500) msgErrors += (msgErrors ? ';' : '') + (e.message || '').substring(0, 80); logger.error({ sessionId, error: e.message }, 'Msg error') }
     }
   })
 }
@@ -557,7 +556,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/msg-stats') {
-    res.writeHead(200); res.end(JSON.stringify({ msgUpsertCount, msgNotifyCount, msgNonNotifyTypes: msgNonNotifyTypes.slice(0,200), msgSkippedNoMsg, msgSkippedGroup, msgSkippedLid, msgSkippedNoText, msgProcessed, msgTypesSeen: msgTypesSeen.slice(0,500), msgJidsReceived: msgJidsReceived.slice(0,500) })); return
+    res.writeHead(200); res.end(JSON.stringify({ msgUpsertCount, msgNotifyCount, msgNonNotifyTypes: msgNonNotifyTypes.slice(0,200), msgSkippedNoMsg, msgSkippedGroup, msgSkippedNoText, msgProcessed, msgTypesSeen: msgTypesSeen.slice(0,500), msgJidsReceived: msgJidsReceived.slice(0,500), msgErrors: msgErrors.slice(0,500) })); return
   }
 
   if (pathname === '/contacts') {
