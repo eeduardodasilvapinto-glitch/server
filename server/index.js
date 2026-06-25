@@ -345,8 +345,24 @@ async function startSession(sessionId, userId, companyId) {
             }
           }
         }
+      } else {
+        const p = { name, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }; if (companyId) p.company_id = companyId; const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.notes = JSON.stringify({created_by: uEntry.userId}); await supabase.from('contacts').insert(p)
       }
-      else { const p = { name, phone: normalizePhone(phone), source: 'whatsapp', stage: 'novo', score: 0 }; if (companyId) p.company_id = companyId; const uEntry = sessions.get(sessionId); if (uEntry?.userId) p.notes = JSON.stringify({created_by: uEntry.userId}); await supabase.from('contacts').insert(p) }
+      // After creating/updating contact, try to link any LID chat with matching name
+      const cleanName = name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
+      if (cleanName && cleanName.length > 1) {
+        const { data: lidChats } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name').like('remote_jid', '%@lid').is('contact_id', null)
+        if (lidChats) for (const lc of lidChats) {
+          // Get the contact_name from the chat
+          if ((lc.contact_name || '').toLowerCase().startsWith(cleanName.toLowerCase())) {
+            // Find the contact we just created/updated
+            const { data: ct } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId).ilike('name', cleanName + '%').limit(1)
+            if (ct?.length) {
+              await supabase.from('whatsapp_chats').update({ contact_id: ct[0].id, contact_name: ct[0].name }).eq('id', lc.id)
+            }
+          }
+        }
+      }
     }
   })
 
@@ -1272,6 +1288,63 @@ const server = http.createServer(async (req, res) => {
           renamed++
         }
         res.writeHead(200); res.end(JSON.stringify({ ok: true, total, renamed, deleted })); return
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/fix-lid-links' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId } = JSON.parse(body)
+        if (!sessionId) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required' })); return }
+        const companyId = await getCompanyId(sessionId)
+        if (!companyId || companyId === 'NO_COMPANY') { res.writeHead(200); res.end(JSON.stringify({ error: 'No company' })); return }
+        // Paginate all chats
+        let allChats = []; let offset = 0; const batchSize = 1000
+        while (true) {
+          const { data: batch } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_id,contact_name').range(offset, offset + batchSize - 1)
+          if (!batch?.length) break
+          allChats = allChats.concat(batch)
+          if (batch.length < batchSize) break
+          offset += batchSize
+        }
+        const lidChats = allChats.filter(function(ch) { return ch.remote_jid?.includes('@lid') })
+        const { data: contacts } = await supabase.from('contacts').select('id,name,phone').eq('company_id', companyId)
+        let unlinked = 0, relinked = 0
+        for (const ch of lidChats) {
+          if (!ch.contact_id) continue
+          const contact = (contacts || []).find(function(c) { return c.id === ch.contact_id })
+          if (!contact) {
+            // Contact was deleted — unlink
+            await supabase.from('whatsapp_chats').update({ contact_id: null }).eq('id', ch.id)
+            unlinked++; continue
+          }
+          // Check if this LID's phone matches the contact's phone
+          const lidNp = normalizePhone(ch.remote_jid.split('@')[0] || '')
+          const contactNp = normalizePhone(contact.phone || '')
+          if (lidNp === contactNp) continue // Correct match
+          // Suspect match: contact_name doesn't match contact name
+          if (ch.contact_name && !/^\d+$/.test(ch.contact_name) && contact.name) {
+            if (!ch.contact_name.toLowerCase().startsWith(contact.name.toLowerCase().substring(0, 5))) {
+              // Unlink suspect LID
+              await supabase.from('whatsapp_chats').update({ contact_id: null, contact_name: 'LID-' + lidNp.slice(-6) }).eq('id', ch.id)
+              unlinked++
+              // Try to find a better contact by chat contact_name
+              const firstName = ch.contact_name.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().split(/\s+/)[0]
+              if (firstName && firstName.length > 1) {
+                const betterMatch = (contacts || []).find(function(c) { return c.name && c.name.toLowerCase().startsWith(firstName.toLowerCase()) && normalizePhone(c.phone || '') !== contactNp })
+                if (betterMatch) {
+                  await supabase.from('whatsapp_chats').update({ contact_id: betterMatch.id, contact_name: betterMatch.name }).eq('id', ch.id)
+                  relinked++
+                }
+              }
+            }
+          }
+        }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, unlinked, relinked })); return
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
     return
