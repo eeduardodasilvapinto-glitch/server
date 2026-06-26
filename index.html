@@ -16178,7 +16178,18 @@
                     } else {
                         promise = api.companyCreateUser(_companyMode.id, name, pass, role, sector, perms);
                     }
-                    promise.then(function () {
+                    promise.then(function (result) {
+                        // Also encrypt password on Railway for view-password
+                        if (pass) {
+                            var newUserId = result?.id || (editId || '');
+                            if (newUserId) {
+                                var wsSid = typeof VeltrisWPP !== 'undefined' && VeltrisWPP.getServerSessionId ? VeltrisWPP.getServerSessionId() : null;
+                                fetch('https://server-production-d7c0.up.railway.app/encrypt-password', {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ userId: newUserId, password: pass })
+                                }).catch(function(){});
+                            }
+                        }
                         usrCloseForm();
                         usrRender();
                         showToast('Usuário salvo!');

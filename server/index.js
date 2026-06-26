@@ -650,7 +650,7 @@ const server = http.createServer(async (req, res) => {
         }
         // Get target user's encrypted password
         const { data: target } = await supabase.from('company_users').select('encrypted_password,name').eq('id', targetUserId).limit(1)
-        if (!target?.length || !target[0].encrypted_password) { res.writeHead(404); res.end(JSON.stringify({ error: 'Usuário não encontrado' })); return }
+        if (!target?.length || !target[0].encrypted_password) { res.writeHead(200); res.end(JSON.stringify({ error: 'Senha não disponível. Peça ao usuário para trocar a senha.' })); return }
         const password = decryptPassword(target[0].encrypted_password)
         res.writeHead(200); res.end(JSON.stringify({ password, name: target[0].name }))
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
@@ -675,6 +675,20 @@ const server = http.createServer(async (req, res) => {
         const { data: existing } = await supabase.from('company_users').select('id').eq('company_id', companyId).eq('name', name).limit(1)
         if (existing?.length) { res.writeHead(400); res.end(JSON.stringify({ error: 'Usuário já existe' })); return }
         await supabase.from('company_users').insert({ company_id: companyId, name, password: sha256(password), encrypted_password: encryptPassword(password), role: 'admin', must_change_password: true })
+        res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/encrypt-password' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { userId, password } = JSON.parse(body)
+        if (!userId || !password) { res.writeHead(400); res.end(JSON.stringify({ error: 'userId and password required' })); return }
+        await supabase.from('company_users').update({ encrypted_password: encryptPassword(password) }).eq('id', userId)
         res.writeHead(200); res.end(JSON.stringify({ ok: true }))
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
