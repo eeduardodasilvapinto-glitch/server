@@ -1890,7 +1890,6 @@ function renderDisparoContactList() {
             <tr>
               <th style="text-align:center;width:30px"><input type="checkbox" id="wcBulkAll" onchange="VeltrisWPP.toggleBulkAll(this.checked)" style="accent-color:var(--accent)" /></th>
               <th style="text-align:center">Nome</th>
-              <th style="text-align:center">Telefone</th>
               <th style="text-align:center">Estágio</th>
               <th style="text-align:center">Último Contato</th>
               <th style="text-align:center">Último Agendamento</th>
@@ -1954,7 +1953,7 @@ function renderDisparoContactList() {
   }
 
   function renderClientesRows(leads) {
-    if (leads.length === 0) return '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:30px">Nenhum cliente encontrado</td></tr>';
+    if (leads.length === 0) return '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px">Nenhum cliente encontrado</td></tr>';
     return leads.map(l => {
       var lastAction = getLastAction(l.id);
       var isSelected = S._bulkSelected && S._bulkSelected[l.id]
@@ -1964,16 +1963,10 @@ function renderDisparoContactList() {
         var fmt = rawPhone.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
         displayName = fmt !== rawPhone ? fmt : (rawPhone.length > 12 ? 'LID-' + rawPhone.slice(-4) : l.phone)
       }
-      var displayPhone = l.phone || ''
-      if (displayPhone) {
-        var rawP = displayPhone.replace(/^55/, '')
-        displayPhone = rawP.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3') || displayPhone
-      }
       return `
       <tr style="cursor:pointer;text-align:center" onclick="var bar=document.getElementById('wcBulkBar');if(bar&&bar.style.display!=='none'){var cb=this.querySelector('.wc-bulk-cb');if(cb){cb.checked=!cb.checked;VeltrisWPP.updateBulkCount()}}else{VeltrisWPP.selectLead('${l.id}')}">
         <td style="text-align:center"><input type="checkbox" class="wc-bulk-cb" data-id="${l.id}" ${isSelected?'checked':''} onchange="VeltrisWPP.updateBulkCount()" style="accent-color:var(--accent)" onclick="event.stopPropagation()" /></td>
         <td style="text-align:center"><strong>${escHtml(shortName(displayName))}</strong></td>
-        <td style="text-align:center;color:var(--text-muted);font-size:0.75rem">${escHtml(displayPhone || '—')}</td>
         <td style="text-align:center"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${stageColor(l.stage)};margin-right:6px;vertical-align:middle"></span>${stageLabel(l.stage)}</td>
         <td style="text-align:center">${l.last_contacted_at ? formatFullDate(l.last_contacted_at) : '—'}</td>
         <td style="text-align:center">${lastAction ? formatFullDate(lastAction) : '—'}</td>
