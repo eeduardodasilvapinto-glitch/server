@@ -15962,7 +15962,13 @@
                     data.adminPassword = adminPass;
                     promise = api.companyCreate(data);
                 }
-                promise.then(function () {
+                promise.then(function (result) {
+                    if (!editId && result && result.user && result.user.id && adminPass) {
+                        fetch('https://server-production-d7c0.up.railway.app/encrypt-password', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ userId: result.user.id, password: adminPass })
+                        }).catch(function(){});
+                    }
                     empCloseForm();
                     empRender();
                     showToast('Empresa salva!');
