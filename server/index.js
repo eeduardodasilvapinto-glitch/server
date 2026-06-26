@@ -206,16 +206,8 @@ async function startSession(sessionId, userId, companyId) {
       if (!pending?.length) { entry.outgoingRunning = false; return }
       const msg = pending[0]
       try {
-        const { data: chats } = await supabase.from('whatsapp_chats').select('remote_jid,contact_id').eq('id', msg.chat_id).limit(1)
-        let jid = chats?.[0]?.remote_jid
-        if (!jid) { await supabase.from('whatsapp_messages').update({ direction: 'failed' }).eq('id', msg.id); entry.outgoingRunning = false; return }
-        // If LID and has contact_id, use real phone for sending
-        if (jid.includes('@lid') && chats[0].contact_id) {
-          const { data: ct } = await supabase.from('contacts').select('phone').eq('id', chats[0].contact_id).limit(1)
-          if (ct?.length && ct[0].phone) {
-            jid = '55' + normalizePhone(ct[0].phone) + '@s.whatsapp.net'
-          }
-        }
+        const { data: chats } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', msg.chat_id).limit(1)
+        const jid = chats?.[0]?.remote_jid; if (!jid) { await supabase.from('whatsapp_messages').update({ direction: 'failed' }).eq('id', msg.id); entry.outgoingRunning = false; return }
         // Skip if text is same as last sent (anti-ban)
         if (msg.text && msg.text === entry.lastSentText) { await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', msg.id); entry.outgoingRunning = false; return }
         if (msg.message_type === 'image' && msg.media_url) {
@@ -898,17 +890,9 @@ const server = http.createServer(async (req, res) => {
         const sendEntry = sessions.get(d.sessionId)
         if (sendEntry?.sock && inserted?.[0]?.id) {
           try {
-            const { data: chatRow } = await supabase.from('whatsapp_chats').select('remote_jid,contact_id').eq('id', chatId).limit(1)
+            const { data: chatRow } = await supabase.from('whatsapp_chats').select('remote_jid').eq('id', chatId).limit(1)
             if (chatRow?.length) {
-              let targetJid = chatRow[0].remote_jid
-              // If LID and has contact_id, use real phone for sending (more reliable)
-              if (targetJid.includes('@lid') && chatRow[0].contact_id) {
-                const { data: ct } = await supabase.from('contacts').select('phone').eq('id', chatRow[0].contact_id).limit(1)
-                if (ct?.length && ct[0].phone) {
-                  targetJid = '55' + normalizePhone(ct[0].phone) + '@s.whatsapp.net'
-                }
-              }
-              await sendEntry.sock.sendMessage(targetJid, { text: d.text.substring(0, 500) })
+              await sendEntry.sock.sendMessage(chatRow[0].remote_jid, { text: d.text.substring(0, 500) })
               await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', inserted[0].id)
               await supabase.from('whatsapp_chats').update({ last_message: { text: d.text.substring(0, 200), at: new Date().toISOString() }, last_message_at: new Date().toISOString() }).eq('id', chatId)
             }
