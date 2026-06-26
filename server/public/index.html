@@ -16282,7 +16282,7 @@
 
                 var isGlobalAdmin = (companyName.toLowerCase() === 'admin');
 
-                api.companyLogin(companyName, adminName, pass).then(function (result) {
+                api.companyLogin(companyName, adminName, pass).then(async function (result) {
                     if (!result || !result.company) { err.textContent = 'Resposta inválida do servidor'; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Entrar'; return; }
                     var userPerms = (result.user && result.user.permissions) || null;
                     if (isGlobalAdmin) {
