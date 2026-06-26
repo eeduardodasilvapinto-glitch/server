@@ -303,6 +303,37 @@ serve(async (req) => {
         return json({ ok: true });
       }
 
+      case "list_sectors": {
+        const { company_id } = data;
+        if (!company_id) return json({ error: "company_id required" }, 400);
+        const { data: sectors } = await supabase
+          .from("company_sectors")
+          .select("*")
+          .eq("company_id", company_id)
+          .order("sort_order");
+        return json({ sectors: sectors || [] });
+      }
+
+      case "save_sectors": {
+        const { company_id, sectors } = data;
+        if (!company_id || !Array.isArray(sectors)) return json({ error: "company_id and sectors array required" }, 400);
+        // Delete existing sectors for this company
+        await supabase.from("company_sectors").delete().eq("company_id", company_id);
+        // Insert new sectors
+        if (sectors.length) {
+          const rows = sectors.map((s, i) => ({
+            company_id,
+            name: s.name,
+            icon: s.icon || "fi-rr-folder",
+            color: s.color || "#6b7280",
+            sort_order: i,
+          }));
+          const { error } = await supabase.from("company_sectors").insert(rows);
+          if (error) return json({ error: error.message }, 500);
+        }
+        return json({ ok: true });
+      }
+
       default:
         return json({ error: "Ação desconhecida: " + action }, 400);
     }

@@ -7351,6 +7351,7 @@
                         <div class="actions" style="margin-bottom:8px">
                             <button class="btn btn-primary" onclick="openModal()" style="flex:1">+ Novo Item</button>
                             <div class="actions-row">
+                                <button class="btn btn-outline" onclick="openSectorManager()" style="flex:1"><i class="fi fi-rr-settings"></i> Setores</button>
                                 <button class="btn btn-outline" onclick="analisarItensIA()" style="flex:1"><img
                                         src="user-robot.svg" class="svg-icon"> IA</button>
                                 <button class="btn btn-outline" onclick="toggleSelectAll()" id="btnSelectAll">
@@ -8788,6 +8789,30 @@
             </div>
         </div>
 
+        <!-- SECTOR MANAGER OVERLAY -->
+        <div class="modal-overlay" id="sectorManagerOverlay" style="display:none">
+            <div class="modal" style="max-width:500px">
+                <h3><i class="fi fi-rr-settings"></i> Gerenciar Setores</h3>
+                <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px">Os setores aparecem nas tarefas, no cadastro de usuários e nos documentos.</p>
+                <div id="sectorManagerList" style="margin-bottom:12px"></div>
+                <div style="display:flex;gap:6px;margin-bottom:14px">
+                    <input type="text" id="sectorManagerNewName" placeholder="Novo setor" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:inherit;font-size:0.85rem">
+                    <div class="cs-wrap" style="width:42px">
+                        <div class="cs-trigger" id="sectorIconTrigger" onclick="toggleSectorIconPicker()" style="padding:8px;text-align:center;cursor:pointer;border:1px solid var(--border);border-radius:8px;background:var(--surface)">
+                            <span id="sectorIconPreview"><i class="fi fi-rr-folder"></i></span>
+                        </div>
+                        <div class="cs-drop" id="sectorIconDrop" style="width:280px;padding:8px;display:grid;grid-template-columns:repeat(6,1fr);gap:4px"></div>
+                    </div>
+                    <button class="btn btn-save" onclick="addSectorFromManager()" style="padding:8px 14px;white-space:nowrap">+</button>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <button class="btn btn-save" onclick="saveSectorManager()" style="flex:1">Salvar Setores</button>
+                    <button class="btn btn-outline" onclick="closeSectorManager()" style="flex:1">Fechar</button>
+                </div>
+                <div class="login-error" id="sectorManagerError" style="display:none;margin-top:8px"></div>
+            </div>
+        </div>
+
         <!-- TOAST SYSTEM -->
         <div class="toast-container" id="toastContainer"></div>
 
@@ -9040,14 +9065,20 @@
             //  DADOS
             // =====================================================================
 
-            const categories = [
-                { id: 'vendas', name: 'Vendas', icon: '<i class="fi fi-rr-chart-line-up"></i>' },
-                { id: 'marketing', name: 'Marketing', icon: '<i class="fi fi-rr-megaphone"></i>' },
-                { id: 'financeiro', name: 'Financeiro', icon: '<i class="fi fi-rr-sack-dollar"></i>' },
-                { id: 'produto', name: 'Produto', icon: '<i class="fi fi-rr-bullseye"></i>' },
-                { id: 'operacional', name: 'Operacional', icon: '<i class="fi fi-rr-settings"></i>' },
-                { id: 'rh', name: 'Pessoas & RH', icon: '<i class="fi fi-rr-users"></i>' },
+            const DEFAULT_SECTORS = [
+                { id: 'vendas', name: 'Vendas', icon: '<i class="fi fi-rr-chart-line-up"></i>', color: '#3b82f6' },
+                { id: 'marketing', name: 'Marketing', icon: '<i class="fi fi-rr-megaphone"></i>', color: '#f97316' },
+                { id: 'financeiro', name: 'Financeiro', icon: '<i class="fi fi-rr-sack-dollar"></i>', color: '#22c55e' },
+                { id: 'produto', name: 'Produto', icon: '<i class="fi fi-rr-bullseye"></i>', color: '#a855f7' },
+                { id: 'operacional', name: 'Operacional', icon: '<i class="fi fi-rr-settings"></i>', color: '#64748b' },
+                { id: 'rh', name: 'Pessoas & RH', icon: '<i class="fi fi-rr-users"></i>', color: '#ec4899' },
             ];
+            var categories = [];
+            function refreshCategories() {
+                var s = window._companySectors;
+                categories = s && s.length ? s.map(function(x,i){ return { id: x.name.toLowerCase().replace(/[^a-z0-9]/g,'_') || 'sector_'+i, name: x.name, icon: x.icon || DEFAULT_SECTORS[0].icon, color: x.color || '#6b7280' }; }) : DEFAULT_SECTORS;
+            }
+            refreshCategories();
 
             const defaultItems = [
                 { id: 'v1', cat: 'vendas', label: 'Elaborar estratégia comercial' },
@@ -10324,7 +10355,7 @@
                 document.getElementById('newLabel').value = '';
                 document.getElementById('newLabel').focus();
                 renderModalSelects();
-                document.getElementById('csSelected').textContent = categories[0].icon + ' ' + categories[0].name;
+                document.getElementById('csSelected').innerHTML = categories[0].icon + ' ' + categories[0].name;
             }
 
             function closeModal() {
@@ -11717,15 +11748,24 @@
             //  SECTOR DROPDOWN (multi-select)
             // =====================================================================
 
-            var SECTORS = ['vendas', 'marketing', 'financeiro', 'produto', 'operacional', 'rh'];
+            var SECTORS = [];
+            function refreshSectors() {
+                var s = window._companySectors;
+                SECTORS = s && s.length ? s.map(function(x){ return x.name; }) : ['vendas', 'marketing', 'financeiro', 'produto', 'operacional', 'rh'];
+            }
+            refreshSectors();
             var sectorOpen = false;
 
             function initSectorDropdown() {
                 var drop = document.getElementById('sectorDrop');
-                drop.innerHTML = SECTORS.map(function (s) {
-                    return '<div class="cs-opt" data-value="' + s + '" onclick="toggleSector(\'' + s + '\')">' +
+                var s = window._companySectors || DEFAULT_SECTORS;
+                drop.innerHTML = SECTORS.map(function (name) {
+                    var sec = s.find(function(x){ return x.name === name; });
+                    var icon = sec ? sec.icon : '';
+                    var label = icon ? icon + ' ' + name : name;
+                    return '<div class="cs-opt" data-value="' + name + '" onclick="toggleSector(\'' + name.replace(/'/g, "\\'") + '\')">' +
                         '<span class="sector-ck" style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--border);margin-right:8px;vertical-align:middle;text-align:center;line-height:14px;font-size:10px;transition:0.15s"></span>' +
-                        s + '</div>';
+                        '<span style="vertical-align:middle">' + label + '</span></div>';
                 }).join('');
             }
 
@@ -11750,12 +11790,12 @@
                 opt.classList.toggle('selected');
                 var ck = opt.querySelector('.sector-ck');
                 if (opt.classList.contains('selected')) {
-                    ck.textContent = '<i class="fi fi-rr-check"></i>';
+                    ck.innerHTML = '<i class="fi fi-rr-check"></i>';
                     ck.style.background = 'var(--accent)';
                     ck.style.borderColor = 'var(--accent)';
                     ck.style.color = '#fff';
                 } else {
-                    ck.textContent = '';
+                    ck.innerHTML = '';
                     ck.style.background = 'transparent';
                     ck.style.borderColor = 'var(--border)';
                 }
@@ -11775,7 +11815,7 @@
                 document.querySelectorAll('#sectorDrop .cs-opt.selected').forEach(function (o) {
                     o.classList.remove('selected');
                     var ck = o.querySelector('.sector-ck');
-                    if (ck) { ck.textContent = ''; ck.style.background = 'transparent'; ck.style.borderColor = 'var(--border)'; }
+                    if (ck) { ck.innerHTML = ''; ck.style.background = 'transparent'; ck.style.borderColor = 'var(--border)'; }
                 });
                 updateSectorTrigger();
             }
@@ -11786,7 +11826,7 @@
                     if (opt) {
                         opt.classList.add('selected');
                         var ck = opt.querySelector('.sector-ck');
-                        if (ck) { ck.textContent = '<i class="fi fi-rr-check"></i>'; ck.style.background = 'var(--accent)'; ck.style.borderColor = 'var(--accent)'; ck.style.color = '#fff'; }
+                        if (ck) { ck.innerHTML = '<i class="fi fi-rr-check"></i>'; ck.style.background = 'var(--accent)'; ck.style.borderColor = 'var(--accent)'; ck.style.color = '#fff'; }
                     }
                 });
                 updateSectorTrigger();
@@ -11796,6 +11836,119 @@
                 var wrap = document.getElementById('sectorTrigger');
                 if (sectorOpen && wrap && !wrap.closest('.cs-wrap').contains(e.target)) closeSectorDropdown();
             });
+
+            // =====================================================================
+            //  SECTOR MANAGER
+            // =====================================================================
+            var SECTOR_ICONS = ['fi-rr-folder','fi-rr-chart-line-up','fi-rr-megaphone','fi-rr-sack-dollar','fi-rr-bullseye','fi-rr-settings','fi-rr-users','fi-rr-rocket','fi-rr-star','fi-rr-heart','fi-rr-flag','fi-rr-lightbulb','fi-rr-wrench','fi-rr-crown','fi-rr-memo','fi-rr-clock','fi-rr-calendar','fi-rr-comment-alt','fi-rr-tags','fi-rr-paper-plane','fi-rr-box','fi-rr-phone','fi-rr-smartphone','fi-rr-link','fi-rr-bolt','fi-rr-shield','fi-rr-globe','fi-rr-map','fi-rr-gem','fi-rr-gift'];
+            var _sectorIconPickerOpen = false;
+            var _pendingSectorIcon = 'fi-rr-folder';
+
+            function initSectorIconPicker() {
+                var drop = document.getElementById('sectorIconDrop');
+                drop.innerHTML = SECTOR_ICONS.map(function(ic) {
+                    return '<div class="cs-opt" data-icon="' + ic + '" onclick="selectSectorIcon(\'' + ic + '\')" style="text-align:center;padding:6px;font-size:1.1rem;border-radius:6px;cursor:pointer"><i class="' + ic + '"></i></div>';
+                }).join('');
+            }
+
+            function toggleSectorIconPicker() { _sectorIconPickerOpen ? closeSectorIconPicker() : openSectorIconPicker(); }
+            function openSectorIconPicker() {
+                _sectorIconPickerOpen = true;
+                initSectorIconPicker();
+                document.getElementById('sectorIconDrop').classList.add('visible');
+            }
+            function closeSectorIconPicker() {
+                _sectorIconPickerOpen = false;
+                document.getElementById('sectorIconDrop').classList.remove('visible');
+            }
+            function selectSectorIcon(ic) {
+                _pendingSectorIcon = ic;
+                document.getElementById('sectorIconPreview').innerHTML = '<i class="' + ic + '"></i>';
+                closeSectorIconPicker();
+            }
+
+            function renderSectorManager() {
+                var s = window._companySectors || DEFAULT_SECTORS;
+                var list = document.getElementById('sectorManagerList');
+                if (!s.length) {
+                    list.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;padding:20px;text-align:center">Nenhum setor ainda. Adicione um abaixo.</div>';
+                    return;
+                }
+                list.innerHTML = s.map(function(sec, i) {
+                    var iconHtml = sec.icon || '<i class="fi fi-rr-folder"></i>';
+                    return '<div class="sector-mgr-row" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;background:var(--surface)">' +
+                        '<span style="cursor:grab;color:var(--text-muted)" onclick="moveSectorItem(' + i + ',-1)">☰</span>' +
+                        '<span>' + iconHtml + '</span>' +
+                        '<span style="flex:1;font-size:0.88rem;color:var(--text)">' + esc(sec.name) + '</span>' +
+                        '<button class="btn-icon" onclick="removeSectorItem(' + i + ')" title="Remover" style="color:var(--red);font-size:0.9rem"><i class="fi fi-rr-cross"></i></button>' +
+                        '</div>';
+                }).join('');
+            }
+
+            function openSectorManager() {
+                _pendingSectorIcon = 'fi-rr-folder';
+                document.getElementById('sectorIconPreview').innerHTML = '<i class="fi fi-rr-folder"></i>';
+                document.getElementById('sectorManagerNewName').value = '';
+                document.getElementById('sectorManagerError').style.display = 'none';
+                renderSectorManager();
+                document.getElementById('sectorManagerOverlay').style.display = 'flex';
+            }
+            function closeSectorManager() {
+                document.getElementById('sectorManagerOverlay').style.display = 'none';
+            }
+            function addSectorFromManager() {
+                var name = document.getElementById('sectorManagerNewName').value.trim();
+                var err = document.getElementById('sectorManagerError');
+                if (!name) { err.textContent = 'Digite um nome para o setor'; err.style.display = 'block'; return; }
+                err.style.display = 'none';
+                var s = window._companySectors || DEFAULT_SECTORS.slice();
+                if (s.find(function(x){ return x.name.toLowerCase() === name.toLowerCase(); })) {
+                    err.textContent = 'Setor já existe'; err.style.display = 'block'; return;
+                }
+                s.push({ name: name, icon: _pendingSectorIcon || 'fi-rr-folder', color: '#6b7280' });
+                window._companySectors = s;
+                refreshCategories(); refreshSectors(); refreshDocSectors();
+                renderSectorManager();
+                document.getElementById('sectorManagerNewName').value = '';
+                _pendingSectorIcon = 'fi-rr-folder';
+                document.getElementById('sectorIconPreview').innerHTML = '<i class="fi fi-rr-folder"></i>';
+            }
+            function removeSectorItem(idx) {
+                var s = window._companySectors || DEFAULT_SECTORS.slice();
+                s.splice(idx, 1);
+                window._companySectors = s;
+                renderSectorManager();
+            }
+            function moveSectorItem(idx, dir) {
+                var s = window._companySectors || DEFAULT_SECTORS.slice();
+                var newIdx = idx + dir;
+                if (newIdx < 0 || newIdx >= s.length) return;
+                var tmp = s[idx]; s[idx] = s[newIdx]; s[newIdx] = tmp;
+                window._companySectors = s;
+                renderSectorManager();
+            }
+            function saveSectorManager() {
+                var s = window._companySectors;
+                if (!s || !_companyMode) { showToast('Erro: sessão não encontrada'); return; }
+                var btn = document.querySelector('#sectorManagerOverlay .btn-save');
+                btn.disabled = true; btn.textContent = 'Salvando...';
+                api._companyFetch('save_sectors', { company_id: _companyMode.id, sectors: s.map(function(x){ return { name: x.name, icon: x.icon || 'fi-rr-folder', color: x.color || '#6b7280' }; }) })
+                .then(function() {
+                    window._companySectors = s;
+                    refreshCategories(); refreshSectors(); refreshDocSectors();
+                    renderSectorManager();
+                    if (typeof renderCategories === 'function') renderCategories();
+                    if (typeof renderChart === 'function') renderChart();
+                    if (typeof renderModalSelects === 'function') renderModalSelects();
+                    showToast('Setores salvos com sucesso!');
+                    closeSectorManager();
+                }).catch(function(e) {
+                    document.getElementById('sectorManagerError').textContent = e.message || 'Erro ao salvar';
+                    document.getElementById('sectorManagerError').style.display = 'block';
+                }).finally(function() {
+                    btn.disabled = false; btn.textContent = 'Salvar Setores';
+                });
+            }
 
             // =====================================================================
             //  ROLE DROPDOWN (single-select)
@@ -11949,15 +12102,15 @@
             }
 
             // ── Doc Sector Dropdown ──
-            var DOC_SECTORS = [
-                { value: '', label: 'Geral' },
-                { value: 'vendas', label: 'Vendas' },
-                { value: 'marketing', label: 'Marketing' },
-                { value: 'financeiro', label: 'Financeiro' },
-                { value: 'produto', label: 'Produto' },
-                { value: 'operacional', label: 'Operacional' },
-                { value: 'rh', label: 'RH' },
-            ];
+            var DOC_SECTORS = [];
+            function refreshDocSectors() {
+                var s = window._companySectors || DEFAULT_SECTORS;
+                DOC_SECTORS = [{ value: '', label: 'Geral' }];
+                s.forEach(function(x) {
+                    DOC_SECTORS.push({ value: x.name.toLowerCase().replace(/[^a-z0-9]/g,'_'), label: x.name });
+                });
+            }
+            refreshDocSectors();
             var docSectorOpen = false;
             var editDocSectorOpen = false;
 
@@ -16318,6 +16471,7 @@
                     document.getElementById('loginOverlay').classList.add('hidden');
                     applyCompanyMode();
                     startPermissionPolling();
+                    loadCompanySectors();
                     showToast('Bem-vindo, ' + result.user.name);
                     btn.disabled = false; btn.textContent = 'Entrar';
                     // Check if user must change password
@@ -16443,6 +16597,23 @@
                     }).catch(function () {});
                 }, 30000);
             }
+
+            function loadCompanySectors() {
+                if (!_companyMode || !_companyMode.id) return;
+                api._companyFetch('list_sectors', { company_id: _companyMode.id }).then(function (res) {
+                    if (res && res.sectors && res.sectors.length) {
+                        window._companySectors = res.sectors;
+                        refreshCategories(); refreshSectors(); refreshDocSectors();
+                    } else {
+                        window._companySectors = null;
+                        refreshCategories(); refreshSectors(); refreshDocSectors();
+                    }
+                }).catch(function () {
+                    window._companySectors = null;
+                    refreshCategories(); refreshSectors(); refreshDocSectors();
+                });
+            }
+            loadCompanySectors();
 
             // =====================================================================
             //  COMPANY DESCRIPTION (first login)
