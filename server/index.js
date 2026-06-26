@@ -695,9 +695,15 @@ const server = http.createServer(async (req, res) => {
     req.on('data', c => body += c)
     req.on('end', async () => {
       try {
-        const { userId, password } = JSON.parse(body)
-        if (!userId || !password) { res.writeHead(400); res.end(JSON.stringify({ error: 'userId and password required' })); return }
-        await supabase.from('company_users').update({ encrypted_password: encryptPassword(password), must_change_password: true }).eq('id', userId)
+        const { userId, companyId, adminName, password } = JSON.parse(body)
+        if (!password || (!userId && (!companyId || !adminName))) { res.writeHead(400); res.end(JSON.stringify({ error: 'userId or companyId+adminName required' })); return }
+        let targetUserId = userId
+        if (!targetUserId && companyId && adminName) {
+          const { data: users } = await supabase.from('company_users').select('id').eq('company_id', companyId).eq('name', adminName).limit(1)
+          if (users?.length) targetUserId = users[0].id
+        }
+        if (!targetUserId) { res.writeHead(400); res.end(JSON.stringify({ error: 'Usuário não encontrado' })); return }
+        await supabase.from('company_users').update({ encrypted_password: encryptPassword(password), must_change_password: true }).eq('id', targetUserId)
         res.writeHead(200); res.end(JSON.stringify({ ok: true }))
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
