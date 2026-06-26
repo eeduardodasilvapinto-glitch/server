@@ -4,5 +4,9 @@
       "source": "/api/:path*",
       "destination": "https://dwkjynmelculfzumoreg.supabase.co/functions/v1/:path*"
     }
-  ]
+  ],
+  "overrides": {
+    "*.svg": { "contentType": "image/svg+xml" }
+  },
+  "cleanUrls": true
 }
