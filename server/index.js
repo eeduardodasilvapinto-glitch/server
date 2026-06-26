@@ -577,7 +577,7 @@ const server = http.createServer(async (req, res) => {
     let sid = url.searchParams.get('sessionId'); let e = sid ? sessions.get(sid) : null
     if (e) { res.writeHead(200); res.end(JSON.stringify({ sessionId: sid, connected: e.status === 'connected', status: e.status, phone: e.phone })); return }
     if (sid) { const { data: d } = await supabase.from('whatsapp_sessions').select('status,phone').eq('id', sid).limit(1); res.writeHead(200); res.end(JSON.stringify({ sessionId: sid, connected: d?.[0]?.status === 'connected', status: d?.[0]?.status || 'unknown', phone: d?.[0]?.phone || null })); return }
-    res.writeHead(200); res.end(JSON.stringify({ status: 'ok', pid: process.pid, cwd: process.cwd(), publicExists: fs.existsSync(path.join(process.cwd(), 'public')) })); return
+    const publicDir = path.join(process.cwd(), 'public'); const serverPublicDir = path.join(process.cwd(), 'server', 'public'); const hasPublic = fs.existsSync(publicDir); const hasServerPublic = fs.existsSync(serverPublicDir); const hasIndex = hasServerPublic && fs.existsSync(path.join(serverPublicDir, 'index.html')); const hasPublicIndex = hasPublic && fs.existsSync(path.join(publicDir, 'index.html')); res.writeHead(200); res.end(JSON.stringify({ status: 'ok', pid: process.pid, cwd: process.cwd(), publicExists: hasPublic, serverPublicExists: hasServerPublic, hasIndexInServerPublic: hasIndex, hasIndexInPublic: hasPublicIndex })); return
   }
 
   if (pathname === '/sessions') {
