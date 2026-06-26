@@ -179,6 +179,7 @@
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  position: relative;
 }
 .wc-window-header .wc-info { flex: 1; }
 .wc-window-header .wc-info .name { font-size: 0.85rem; font-weight: 600; color: var(--text); }
@@ -1016,6 +1017,32 @@
 }
 .wc-ai-btn:hover {
   opacity: 0.85;
+}
+.wc-ai-drop {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  z-index: 100;
+  min-width: 180px;
+  overflow: hidden;
+}
+.wc-ai-drop.visible {
+  display: block;
+}
+.wc-ai-opt {
+  padding: 10px 14px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: var(--text);
+  transition: background 0.1s;
+}
+.wc-ai-opt:hover {
+  background: rgba(var(--accent-rgb), 0.08);
 }
 /* ===== DISPAROS TAB ===== */
 .wc-disparo-card {

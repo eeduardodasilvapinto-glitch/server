@@ -656,9 +656,17 @@ window.VeltrisWPP = (() => {
     if (header && !header.querySelector('.wc-ai-btn')) {
       var aiBtn = document.createElement('button');
       aiBtn.className = 'wc-ai-btn';
-      aiBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4c0 2-2 3-4 5-2-2-4-3-4-5a4 4 0 0 1 4-4z"/><path d="M12 11v8"/><path d="M8 22h8"/><path d="M10 22v-3"/><path d="M14 22v-3"/><circle cx="12" cy="6" r="1"/></svg> Analisar';
-      aiBtn.onclick = function() { if (window.VeltrisWPP.analyzeConversation) window.VeltrisWPP.analyzeConversation(); };
-      aiBtn.title = 'Analisar conversa com IA';
+      aiBtn.innerHTML = '🤖';
+      aiBtn.title = 'IA';
+      aiBtn.onclick = function() { toggleAiDropdown(); };
+      header.appendChild(aiBtn);
+      if (!document.getElementById('wcAiDrop')) {
+        var drop = document.createElement('div');
+        drop.id = 'wcAiDrop';
+        drop.className = 'wc-ai-drop';
+        drop.innerHTML = '<div class="wc-ai-opt" data-mode="vendas" onclick="VeltrisWPP.analyzeConversation(\'vendas\')">📈 Analisar (Vendas)</div><div class="wc-ai-opt" data-mode="atendimento" onclick="VeltrisWPP.analyzeConversation(\'atendimento\')">📅 Analisar (Atendimento)</div>';
+        header.appendChild(drop);
+      }
       header.appendChild(aiBtn);
     }
     if (header && !header.querySelector('.wc-edit-btn')) {
@@ -836,7 +844,17 @@ window.VeltrisWPP = (() => {
     }
   }
 
-  async function analyzeConversation() {
+  function toggleAiDropdown() {
+    var drop = document.getElementById('wcAiDrop');
+    if (!drop) return;
+    drop.classList.toggle('visible');
+    if (drop.classList.contains('visible')) {
+      setTimeout(function(){ document.addEventListener('click', function closeDrop(){ drop.classList.remove('visible'); document.removeEventListener('click', closeDrop); }) }, 10);
+    }
+  }
+
+  async function analyzeConversation(mode) {
+    toggleAiDropdown();
     if (!S.activeChatId || !S.messages.length) {
       if (typeof showToast === 'function') showToast('Nenhuma mensagem para analisar.');
       return;
@@ -857,13 +875,16 @@ window.VeltrisWPP = (() => {
       companyContext = 'A empresa atua no ramo: ' + (companyMode.descriptionSector || 'não informado') + '. Descrição: ' + (companyMode.description || 'não informada') + '.';
     }
 
+    const modeVendas = mode === 'vendas' || !mode
+    const focusLabel = modeVendas ? 'conversão de vendas' : 'agendamento de atendimentos'
     const systemPrompt = 'Você é um analista de vendas e relacionamento com clientes sênior. ' + companyContext + ' ' +
-      'Analise a conversa de WhatsApp abaixo e forneça uma análise detalhada e estratégica em português brasileiro. ' +
+      'Analise a conversa de WhatsApp abaixo e forneça uma análise detalhada e estratégica em português brasileiro, ' +
+      'com FOCO em ' + focusLabel + '. ' +
       'Sua análise deve conter EXATAMENTE estas seções, separadas por linhas em branco:\n\n' +
       '1. CONTEXTO DA CONVERSA: Resumo do que foi discutido, tom da conversa, e estágio do relacionamento.\n' +
       '2. PONTOS FORTES: O que está sendo bem conduzido na abordagem.\n' +
-      '3. PONTOS DE MELHORIA: O que poderia ser melhorado na comunicação ou estratégia.\n' +
-      '4. PRÓXIMOS PASSOS SUGERIDOS: Ações concretas e objetivas para avançar o relacionamento ou fechar negócio.\n' +
+      '3. PONTOS DE MELHORIA: O que poderia ser melhorado na comunicação ou estratégia para ' + focusLabel + '.\n' +
+      '4. PRÓXIMOS PASSOS SUGERIDOS: Ações concretas e objetivas para avançar o ' + (modeVendas ? 'fechamento' : 'agendamento') + '.\n' +
       '5. ANÁLISE DE INTENÇÃO: Qual parece ser o nível de interesse do lead (Frio/Morno/Quente) e por quê.\n\n' +
       'Seja direto, profissional e baseie sua análise APENAS no conteúdo da conversa. ' +
       'Não use markdown, asteriscos ou formatação especial. Apenas texto puro com seções claras.';
