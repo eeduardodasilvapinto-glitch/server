@@ -15969,6 +15969,14 @@
                     showToast('Erro na operacao.');
                 });
             }
+                promise.then(function () {
+                    empCloseForm();
+                    empRender();
+                    showToast('Empresa salva!');
+                }).catch(function (e) {
+                    showToast('Erro na operacao.');
+                });
+            }
 
             function empDelete(id) {
                 if (!confirm('Remover esta empresa?')) return;
