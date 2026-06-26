@@ -6,6 +6,7 @@ import fs from 'fs'
 import path from 'path'
 import http from 'http'
 import 'dotenv/config'
+import crypto from 'crypto'
 import { parse } from 'csv-parse/sync'
 import * as XLSX from 'xlsx'
 
@@ -135,6 +136,27 @@ async function cleanupSessionData(sid) {
       }
     }
   } catch (e) {}
+}
+
+const ENCRYPTION_KEY = crypto.createHash('sha256').update(String(process.env.PASSWORD_ENCRYPTION_KEY || 'veltris-default-key-2024')).digest('hex').slice(0, 32)
+function encryptPassword(password) {
+  const iv = crypto.randomBytes(16)
+  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv)
+  let encrypted = cipher.update(password, 'utf-8', 'hex')
+  encrypted += cipher.final('hex')
+  return iv.toString('hex') + ':' + encrypted
+}
+function decryptPassword(encrypted) {
+  const parts = encrypted.split(':')
+  const iv = Buffer.from(parts[0], 'hex')
+  const encryptedText = parts[1]
+  const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv)
+  let decrypted = decipher.update(encryptedText, 'hex', 'utf-8')
+  decrypted += decipher.final('utf-8')
+  return decrypted
+}
+function sha256(password) {
+  return crypto.createHash('sha256').update(password).digest('hex')
 }
 
 async function trimMessages(chatId, max = 200) {
@@ -580,6 +602,77 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/pump-status') { const sid = url.searchParams.get('sessionId'); const e = sid ? sessions.get(sid) : null; const pump = !!e?.outgoingInterval; let p = []; if (sid) { const r = await supabase.from('whatsapp_messages').select('id,chat_id,text,direction,created_at').eq('session_id', sid).eq('direction', 'sent').gte('created_at', new Date(Date.now() - 120000).toISOString()).limit(10); p = r.data || [] }; const cid = e?.companyId; const dc = dailySent[cid] || { date: 'none', count: 0 }; res.writeHead(200); res.end(JSON.stringify({ pumpRunning: pump, pendingCount: p.length, pending: p, hasSocket: !!e?.sock, sessionStatus: e?.status, dailySent: dc.count, dailyLimit: e?.dailyLimit || DAILY_LIMIT_DEFAULT, dailyDate: dc.date, lastSentText: e?.lastSentText || '' })); return }
   if (pathname === '/sync-contacts-now') { const sid = url.searchParams.get('sessionId'); if (!sid || !sessions.get(sid)) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId required or invalid' })); return }; const e = sessions.get(sid); if (e) e._syncRetries = 0; syncContacts(sid, e?.companyId); res.writeHead(200); res.end(JSON.stringify({ ok: true })); return }
   if (pathname === '/set-daily-limit') { const sid = url.searchParams.get('sessionId'); const limit = parseInt(url.searchParams.get('limit')) || DAILY_LIMIT_DEFAULT; const e = sid ? sessions.get(sid) : null; if (e) e.dailyLimit = limit; res.writeHead(200); res.end(JSON.stringify({ ok: true, dailyLimit: limit })); return }
+
+  if (pathname === '/change-password' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId, currentPassword, newPassword } = JSON.parse(body)
+        if (!sessionId || !currentPassword || !newPassword) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId, currentPassword, newPassword required' })); return }
+        if (newPassword.length < 4) { res.writeHead(400); res.end(JSON.stringify({ error: 'Senha deve ter no mínimo 4 caracteres' })); return }
+        const entry = sessions.get(sessionId)
+        const userId = entry?.userId
+        if (!userId) { res.writeHead(401); res.end(JSON.stringify({ error: 'Usuário não encontrado' })); return }
+        const { data: user } = await supabase.from('company_users').select('id,password').eq('id', userId).limit(1)
+        if (!user?.length) { res.writeHead(401); res.end(JSON.stringify({ error: 'Usuário não encontrado' })); return }
+        if (user[0].password !== sha256(currentPassword)) { res.writeHead(401); res.end(JSON.stringify({ error: 'Senha atual incorreta' })); return }
+        await supabase.from('company_users').update({ password: sha256(newPassword), encrypted_password: encryptPassword(newPassword), must_change_password: false }).eq('id', userId)
+        res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/view-password' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId, targetUserId } = JSON.parse(body)
+        if (!sessionId || !targetUserId) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId and targetUserId required' })); return }
+        const entry = sessions.get(sessionId)
+        const requesterId = entry?.userId
+        if (!requesterId) { res.writeHead(401); res.end(JSON.stringify({ error: 'Não autorizado' })); return }
+        // Check if requester is admin of Admin company
+        const { data: requester } = await supabase.from('company_users').select('id,role,company_id').eq('id', requesterId).limit(1)
+        if (!requester?.length) { res.writeHead(401); res.end(JSON.stringify({ error: 'Não autorizado' })); return }
+        const { data: requesterCompany } = await supabase.from('companies').select('id,name').eq('id', requester[0].company_id).limit(1)
+        if (!requesterCompany?.length || requesterCompany[0].name !== 'Admin' || requester[0].role !== 'admin') {
+          res.writeHead(403); res.end(JSON.stringify({ error: 'Apenas administradores master' })); return
+        }
+        // Get target user's encrypted password
+        const { data: target } = await supabase.from('company_users').select('encrypted_password,name').eq('id', targetUserId).limit(1)
+        if (!target?.length || !target[0].encrypted_password) { res.writeHead(404); res.end(JSON.stringify({ error: 'Usuário não encontrado' })); return }
+        const password = decryptPassword(target[0].encrypted_password)
+        res.writeHead(200); res.end(JSON.stringify({ password, name: target[0].name }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
+  if (pathname === '/create-admin-user' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId, name, password, companyId } = JSON.parse(body)
+        if (!sessionId || !name || !password || !companyId) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId, name, password, companyId required' })); return }
+        if (password.length < 4) { res.writeHead(400); res.end(JSON.stringify({ error: 'Senha deve ter no mínimo 4 caracteres' })); return }
+        // Check if requester is admin
+        const entry = sessions.get(sessionId)
+        const requesterId = entry?.userId
+        if (!requesterId) { res.writeHead(401); res.end(JSON.stringify({ error: 'Não autorizado' })); return }
+        const { data: requester } = await supabase.from('company_users').select('role,company_id').eq('id', requesterId).limit(1)
+        if (!requester?.length || requester[0].role !== 'admin') { res.writeHead(403); res.end(JSON.stringify({ error: 'Apenas administradores' })); return }
+        const { data: existing } = await supabase.from('company_users').select('id').eq('company_id', companyId).eq('name', name).limit(1)
+        if (existing?.length) { res.writeHead(400); res.end(JSON.stringify({ error: 'Usuário já existe' })); return }
+        await supabase.from('company_users').insert({ company_id: companyId, name, password: sha256(password), encrypted_password: encryptPassword(password), role: 'admin', must_change_password: true })
+        res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
 
   if (pathname === '/company-desc-status' && req.method === 'GET') {
     const companyId = url.searchParams.get('companyId')
