@@ -2461,13 +2461,15 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  // Try static files from public/ fallback
-  const publicDir = path.join(process.cwd(), 'server', 'public')
+  // Try static files from public/ fallback (multiple possible paths)
+  const publicDirs = [path.join(process.cwd(), 'server', 'public'), path.join(process.cwd(), 'public')]
   if (req.method === 'GET') {
-    let fp = path.join(publicDir, pathname === '/' ? 'index.html' : pathname.substring(1))
-    if (fp.startsWith(publicDir) && fs.existsSync(fp) && !fs.statSync(fp).isDirectory()) {
-      const ext = path.extname(fp).toLowerCase(); const ct = { '.html':'text/html','.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png' }
-      res.writeHead(200, { 'Content-Type': ct[ext] || 'application/octet-stream' }); fs.createReadStream(fp).pipe(res); return
+    for (const publicDir of publicDirs) {
+      let fp = path.join(publicDir, pathname === '/' ? 'index.html' : pathname.substring(1))
+      if (fp.startsWith(publicDir) && fs.existsSync(fp) && !fs.statSync(fp).isDirectory()) {
+        const ext = path.extname(fp).toLowerCase(); const ct = { '.html':'text/html','.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png' }
+        res.writeHead(200, { 'Content-Type': ct[ext] || 'application/octet-stream' }); fs.createReadStream(fp).pipe(res); return
+      }
     }
   }
 
