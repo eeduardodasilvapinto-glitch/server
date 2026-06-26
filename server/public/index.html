@@ -8751,6 +8751,30 @@
         </div>
 
         <!-- FORCE PASSWORD CHANGE OVERLAY -->
+        <div class="modal-overlay" id="changePassOverlay">
+            <div class="modal" style="max-width:400px;text-align:center">
+                <h3 style="margin-bottom:8px">🔑 Troca de Senha Obrigatória</h3>
+                <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px">
+                    Esta é uma senha temporária. Crie uma nova senha para continuar.
+                </p>
+                <div class="settings-field">
+                    <label>Senha Atual</label>
+                    <input type="password" id="changePassCurrent" placeholder="Senha atual" />
+                </div>
+                <div class="settings-field">
+                    <label>Nova Senha</label>
+                    <input type="password" id="changePassNew" placeholder="Nova senha (mín. 4 caracteres)" />
+                </div>
+                <div class="settings-field">
+                    <label>Confirmar Nova Senha</label>
+                    <input type="password" id="changePassConfirm" placeholder="Repita a nova senha" />
+                </div>
+                <div class="login-error" id="changePassError" style="display:none"></div>
+                <button class="login-btn" id="changePassBtn" onclick="submitForceChangePassword()" style="margin-top:8px">Alterar Senha</button>
+            </div>
+        </div>
+
+        <!-- FORCE PASSWORD CHANGE OVERLAY -->
         <div id="pwChangeOverlay"
             style="display:none;position:fixed;inset:0;z-index:9998;background:var(--bg);align-items:center;justify-content:center">
             <div class="login-box">
@@ -15756,7 +15780,7 @@
 
             function empDefaultPerms() {
                 var o = {};
-                Object.keys(_tabLabels).forEach(function (k) { o[k] = { access: k !== 'empresas' && k !== 'usuarios' && k !== 'configuracoes' }; });
+                Object.keys(_tabLabels).forEach(function (k) { o[k] = { access: k !== 'empresas' }; });
                 o.ia.chat = true;
                 PERM_TREE_KEYS.forEach(function(key) {
                     var node = PERM_TREE[key];
@@ -15994,7 +16018,7 @@
             function usrRenderPerms(perms) {
                 var html = '';
                 Object.keys(_tabLabels).forEach(function (key) {
-                    if (key === 'empresas' || key === 'usuarios' || key === 'configuracoes') return;
+                    if (key === 'empresas') return;
                     var p = perms[key] || {};
                     html += '<div class="emp-perm-row">' +
                         '<span class="perm-label">' + (_tabLabels[key] || key) + '</span>' +
@@ -16129,6 +16153,21 @@
                 document.getElementById('usrFormTitle').textContent = usr ? 'Editar Usuário' : 'Novo Usuário';
                 document.getElementById('usrFormName').value = usr ? usr.name : '';
                 document.getElementById('usrFormPass').value = '';
+                if (usr && usr.role === 'admin') {
+                    var currentUsrId = (api.companyGetSession && api.companyGetSession()) ? api.companyGetSession().user.id : null;
+                    var isSelf = currentUsrId === usr.id;
+                    var isAdminMaster = _companyMode && _companyMode.isGlobalAdmin;
+                    if (!isSelf && !isAdminMaster) {
+                        document.getElementById('usrFormPass').disabled = true;
+                        document.getElementById('usrFormPass').placeholder = 'Apenas Admin Master pode alterar';
+                    } else {
+                        document.getElementById('usrFormPass').disabled = false;
+                        document.getElementById('usrFormPass').placeholder = 'Nova senha (deixe vazio para manter)';
+                    }
+                } else {
+                    document.getElementById('usrFormPass').disabled = false;
+                    document.getElementById('usrFormPass').placeholder = editId ? 'Nova senha (deixe vazio para manter)' : 'Senha de acesso';
+                }
                 _usrRoleOpen = false;
                 document.getElementById('usrRoleDrop').classList.remove('visible');
                 document.getElementById('usrRoleTrigger').classList.remove('open');
@@ -16273,10 +16312,52 @@
                     render();
                     try { renderFinanceCharts(); } catch (e) { }
                     btn.disabled = false; btn.textContent = 'Entrar';
+                    try {
+                        var resp = await fetch('https://server-production-d7c0.up.railway.app/check-must-change?userId=' + encodeURIComponent(result.user.id))
+                        if (resp.ok) {
+                            var data = await resp.json()
+                            if (data.mustChange) {
+                                document.getElementById('changePassOverlay').dataset.userId = result.user.id;
+                                document.getElementById('changePassOverlay').dataset.passHash = data.password;
+                                document.getElementById('changePassOverlay').style.display = 'flex';
+                            }
+                        }
+                    } catch (e) {}
                 }).catch(function (e) {
                     err.textContent = e.message || 'Erro desconhecido'; err.style.display = 'block';
                     btn.disabled = false; btn.textContent = 'Entrar';
                 });
+            }
+
+            async function submitForceChangePassword() {
+                var overlay = document.getElementById('changePassOverlay');
+                var userId = overlay.dataset.userId;
+                var current = document.getElementById('changePassCurrent').value.trim();
+                var newPass = document.getElementById('changePassNew').value.trim();
+                var confirm = document.getElementById('changePassConfirm').value.trim();
+                var err = document.getElementById('changePassError');
+                if (!current || !newPass || !confirm) { err.textContent = 'Preencha todos os campos'; err.style.display = 'block'; return; }
+                if (newPass.length < 4) { err.textContent = 'Mínimo 4 caracteres'; err.style.display = 'block'; return; }
+                if (newPass !== confirm) { err.textContent = 'Senhas não conferem'; err.style.display = 'block'; return; }
+                err.style.display = 'none';
+                var btn = document.getElementById('changePassBtn'); btn.disabled = true; btn.textContent = 'Alterando...';
+                try {
+                    var resp = await fetch('https://server-production-d7c0.up.railway.app/change-password', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: userId, currentPassword: current, newPassword: newPass })
+                    });
+                    var data = await resp.json();
+                    if (data.ok) {
+                        overlay.style.display = 'none';
+                        document.getElementById('changePassCurrent').value = '';
+                        document.getElementById('changePassNew').value = '';
+                        document.getElementById('changePassConfirm').value = '';
+                        if (typeof showToast === 'function') showToast('Senha alterada com sucesso!');
+                    } else {
+                        err.textContent = data.error || 'Erro ao alterar senha'; err.style.display = 'block';
+                    }
+                } catch (e) { err.textContent = 'Erro de conexão'; err.style.display = 'block'; }
+                btn.disabled = false; btn.textContent = 'Alterar Senha';
             }
 
             function empCompanyLogout() {
