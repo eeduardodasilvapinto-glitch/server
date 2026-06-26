@@ -16393,7 +16393,17 @@
                 Object.keys(savedPerms).forEach(function (k) {
                     if (!perms[k]) perms[k] = savedPerms[k];
                 });
-                perms = normalizePerms(applyPermissionDeps(perms));
+                if (perms) {
+                    PERM_TREE_KEYS.forEach(function(key) {
+                        var node = PERM_TREE[key];
+                        if (!node.children) return;
+                        var parentAccess = perms[key] && perms[key].access !== false;
+                        node.children.forEach(function(childKey) {
+                            if (!perms[childKey]) perms[childKey] = {};
+                            if (!parentAccess) perms[childKey].access = false;
+                        });
+                    });
+                }
                 document.querySelectorAll('.sidebar-nav .tab[data-tab]').forEach(function (tab) {
                     var key = tab.dataset.tab;
                     if (!key) return;
@@ -16408,7 +16418,6 @@
                         tab.style.display = '';
                     }
                 });
-                // sidebar settings button still only for admin master
                 document.getElementById('sidebarSettingsBtn').style.display = isGlobalAdmin ? '' : 'none';
                 if (!isCompany && typeof api !== 'undefined') {
                     document.getElementById('sidebarSettingsBtn').style.display = api.isAdmin() ? '' : 'none';
