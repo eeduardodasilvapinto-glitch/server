@@ -7381,19 +7381,18 @@
                                         <div class="bc-opt" data-value="vendas" onclick="selectBC('cat','vendas')"><i
                                                 class="fi fi-rr-chart-line-up"></i> Vendas</div>
                                         <div class="bc-opt" data-value="marketing"
-                                            onclick="selectBC('cat','marketing')"><img src="megaphone.svg"
-                                                class="svg-icon"> Marketing</div>
+                                            onclick="selectBC('cat','marketing')"><i class="fi fi-rr-megaphone"></i> Marketing</div>
                                         <div class="bc-opt" data-value="financeiro"
                                             onclick="selectBC('cat','financeiro')"><i class="fi fi-rr-sack-dollar"></i>
                                             Financeiro</div>
                                         <div class="bc-opt" data-value="produto" onclick="selectBC('cat','produto')">
-                                            <img src="bullseye-arrow.svg" class="svg-icon"> Produto
+                                            <i class="fi fi-rr-bullseye"></i> Produto
                                         </div>
                                         <div class="bc-opt" data-value="operacional"
                                             onclick="selectBC('cat','operacional')"><i class="fi fi-rr-settings"></i>
                                             Operacional</div>
-                                        <div class="bc-opt" data-value="rh" onclick="selectBC('cat','rh')"><img
-                                                src="user.svg" class="svg-icon"> Pessoas & RH</div>
+                                        <div class="bc-opt" data-value="rh" onclick="selectBC('cat','rh')"><i
+                                                class="fi fi-rr-users"></i> Pessoas & RH</div>
                                     </div>
                                 </div>
                                 <!-- Prioridade -->
@@ -8628,14 +8627,14 @@
                     <label style="font-size:0.7rem;color:var(--text-muted);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Ícone</label>
                     <div class="icon-picker" id="iconPicker">
                         <div class="icon-opt selected" data-icon="fi-rr-memo"><i class="fi fi-rr-memo"></i></div>
-                        <div class="icon-opt" data-icon="fi-rr-bulb"><i class="fi fi-rr-lightbulb"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-lightbulb"><i class="fi fi-rr-lightbulb"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-rocket"><i class="fi fi-rr-rocket"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-star"><i class="fi fi-rr-star"></i></div>
-                        <div class="icon-opt" data-icon="fi-rr-wrench-simple"><i class="fi fi-rr-wrench"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-wrench-simple"><i class="fi fi-rr-wrench-simple"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-check-circle"><i class="fi fi-rr-check-circle"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-heart"><i class="fi fi-rr-heart"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-flag"><i class="fi fi-rr-flag"></i></div>
-                        <div class="icon-opt" data-icon="fi-rr-target"><i class="fi fi-rr-bullseye"></i></div>
+                        <div class="icon-opt" data-icon="fi-rr-bullseye"><i class="fi fi-rr-bullseye"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-chart-line-up"><i class="fi fi-rr-chart-line-up"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-users"><i class="fi fi-rr-users"></i></div>
                         <div class="icon-opt" data-icon="fi-rr-sack-dollar"><i class="fi fi-rr-sack-dollar"></i></div>
@@ -10282,10 +10281,10 @@
                 if (selectedItems.size > 0) {
                     bar.style.display = 'block';
                     count.textContent = selectedItems.size + ' selecionado' + (selectedItems.size > 1 ? 's' : '');
-                    btn.textContent = '<i class="fi fi-rr-cross"></i>';
+                    btn.innerHTML = '<i class="fi fi-rr-cross"></i>';
                 } else if (selectMode) {
                     bar.style.display = 'none';
-                    btn.textContent = '<i class="fi fi-rr-cross"></i>';
+                    btn.innerHTML = '<i class="fi fi-rr-cross"></i>';
                 } else {
                     bar.style.display = 'none';
                     btn.innerHTML = '<img src="pencil.svg" class="svg-icon" style="margin:0; width:0.9em; height:0.9em;">';
@@ -11503,7 +11502,7 @@
                 }
                 var status = document.getElementById('kbStatus');
                 status.className = 'kb-status ok';
-                status.textContent = '<i class="fi fi-rr-check-circle"></i> Base salva! IA usará esse contexto.';
+                status.innerHTML = '<i class="fi fi-rr-check-circle"></i> Base salva! IA usará esse contexto.';
                 status.style.display = 'block';
                 setTimeout(function () { status.style.display = 'none'; }, 3000);
                 showToast('<i class="fi fi-rr-check-circle"></i> Base de conhecimento salva');
@@ -11713,16 +11712,16 @@
                     var status = document.getElementById('apiStatus');
                     if (r && r.success) {
                         status.className = 'settings-status ok';
-                        status.textContent = '<i class="fi fi-rr-check-circle"></i> Configurações globais salvas!';
+                        status.innerHTML = '<i class="fi fi-rr-check-circle"></i> Configurações globais salvas!';
                     } else {
                         status.className = 'settings-status err';
-                        status.textContent = '<i class="fi fi-rr-triangle-warning"></i> Erro ao salvar: ' + ((r && r.error) || 'desconhecido');
+                        status.innerHTML = '<i class="fi fi-rr-triangle-warning"></i> Erro ao salvar: ' + ((r && r.error) || 'desconhecido');
                     }
                     setTimeout(function () { status.className = 'settings-status'; }, 3000);
                 }).catch(function (e) {
                     var status = document.getElementById('apiStatus');
                     status.className = 'settings-status err';
-                    status.textContent = '<i class="fi fi-rr-triangle-warning"></i> Erro ao salvar. Tente novamente.';
+                    status.innerHTML = '<i class="fi fi-rr-triangle-warning"></i> Erro ao salvar. Tente novamente.';
                     setTimeout(function () { status.className = 'settings-status'; }, 3000);
                 });
             }
@@ -11840,7 +11839,7 @@
             // =====================================================================
             //  SECTOR MANAGER
             // =====================================================================
-            var SECTOR_ICONS = ['fi-rr-folder','fi-rr-chart-line-up','fi-rr-megaphone','fi-rr-sack-dollar','fi-rr-bullseye','fi-rr-settings','fi-rr-users','fi-rr-rocket','fi-rr-star','fi-rr-heart','fi-rr-flag','fi-rr-lightbulb','fi-rr-wrench','fi-rr-crown','fi-rr-memo','fi-rr-clock','fi-rr-calendar','fi-rr-comment-alt','fi-rr-tags','fi-rr-paper-plane','fi-rr-box','fi-rr-phone','fi-rr-smartphone','fi-rr-link','fi-rr-bolt','fi-rr-shield','fi-rr-globe','fi-rr-map','fi-rr-gem','fi-rr-gift'];
+            var SECTOR_ICONS = ['fi-rr-folder','fi-rr-chart-line-up','fi-rr-megaphone','fi-rr-sack-dollar','fi-rr-bullseye','fi-rr-settings','fi-rr-users','fi-rr-rocket','fi-rr-star','fi-rr-heart','fi-rr-flag','fi-rr-lightbulb','fi-rr-wrench-simple','fi-rr-crown','fi-rr-memo','fi-rr-clock','fi-rr-calendar','fi-rr-comment-alt','fi-rr-tags','fi-rr-paper-plane','fi-rr-box','fi-rr-phone','fi-rr-smartphone','fi-rr-link','fi-rr-bolt','fi-rr-shield','fi-rr-globe','fi-rr-map','fi-rr-gem','fi-rr-gift'];
             var _sectorIconPickerOpen = false;
             var _pendingSectorIcon = 'fi-rr-folder';
 
@@ -12501,7 +12500,7 @@
                 if (!btn) return;
                 var isOpen = panel.style.display !== 'none';
                 panel.style.display = isOpen ? 'none' : '';
-                btn.textContent = isOpen ? '<i class="fi fi-rr-plus"></i> Documentos' : '<i class="fi fi-rr-cross"></i> Fechar';
+                btn.innerHTML = isOpen ? '<i class="fi fi-rr-plus"></i> Documentos' : '<i class="fi fi-rr-cross"></i> Fechar';
                 btn.className = isOpen ? 'btn btn-outline' : 'btn btn-save';
                 if (!isOpen) {
                     initDocMinRoleDropdown();
@@ -12572,18 +12571,18 @@
                 status.style.display = 'none';
                 try {
                     await api.uploadDocument(file, title, sector || null, minRole);
-                    status.textContent = '<i class="fi fi-rr-check-circle"></i> Documento enviado e processado!';
+                    status.innerHTML = '<i class="fi fi-rr-check-circle"></i> Documento enviado e processado!';
                     status.className = 'kb-status ok';
                     status.style.display = 'block';
                     document.getElementById('docTitle').value = '';
                     document.getElementById('docFile').value = '';
                     loadDocuments();
                 } catch (e) {
-                    status.textContent = '<i class="fi fi-rr-triangle-warning"></i> Erro ao enviar documento.';
+                    status.innerHTML = '<i class="fi fi-rr-triangle-warning"></i> Erro ao enviar documento.';
                     status.className = 'kb-status';
                     status.style.display = 'block';
                 }
-                btn.disabled = false; btn.textContent = '<i class="fi fi-rr-paper-plane"></i> Enviar';
+                btn.disabled = false; btn.innerHTML = '<i class="fi fi-rr-paper-plane"></i> Enviar';
                 setTimeout(function () { status.style.display = 'none'; }, 4000);
             }
 
@@ -13404,7 +13403,7 @@
                 if (!api || !api.isLoggedIn()) { showToast('<i class="fi fi-rr-triangle-warning"></i> Faça login para usar a IA'); return; }
 
                 var content = document.getElementById('finAiContent');
-                content.textContent = '<i class="fi fi-rr-thinking"></i> IA está analisando as finanças...';
+                content.innerHTML = '<i class="fi fi-rr-thinking"></i> IA está analisando as finanças...';
 
                 var done = totalDone();
                 var total = totalItems();
@@ -15116,7 +15115,7 @@
                     showToast('<i class="fi fi-rr-triangle-warning"></i> URL inválida');
                     document.getElementById('tabAnalise').classList.add('an-empty');
                     document.getElementById('tabAnalise').classList.remove('an-dashboard');
-                    btn.disabled = false; btn.textContent = '<i class="fi fi-rr-search"></i> Analisar Site';
+                    btn.disabled = false; btn.innerHTML = '<i class="fi fi-rr-search"></i> Analisar Site';
                     loading.style.display = 'none';
                     return;
                 }
@@ -15134,7 +15133,7 @@
                 var report = await analyzeSiteFull(url, pageSpeed, pageContent, screenshotUrl);
 
                 loading.style.display = 'none';
-                btn.disabled = false; btn.textContent = '<i class="fi fi-rr-search"></i> Analisar Site';
+                btn.disabled = false; btn.innerHTML = '<i class="fi fi-rr-search"></i> Analisar Site';
 
                 if (!report) {
                     showToast('<i class="fi fi-rr-cross-circle"></i> Erro ao gerar relatório. Verifique a chave de API.');
