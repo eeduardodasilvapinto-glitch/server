@@ -15969,14 +15969,6 @@
                     showToast('Erro na operacao.');
                 });
             }
-                promise.then(function () {
-                    empCloseForm();
-                    empRender();
-                    showToast('Empresa salva!');
-                }).catch(function (e) {
-                    showToast('Erro na operacao.');
-                });
-            }
 
             function empDelete(id) {
                 if (!confirm('Remover esta empresa?')) return;
@@ -16392,8 +16384,16 @@
             function applyCompanyMode() {
                 var isCompany = isCompanyMode();
                 var isGlobalAdmin = isCompany && _companyMode && _companyMode.isGlobalAdmin;
-                var perms = isCompany && _companyMode ? normalizePerms(_companyMode.permissions || {}) : {};
-                applyPermissionDeps(perms);
+                var savedPerms = isCompany && _companyMode ? (_companyMode.permissions || {}) : {};
+                var defaults = empDefaultPerms();
+                var perms = {};
+                Object.keys(defaults).forEach(function (k) {
+                    perms[k] = Object.assign({}, defaults[k], savedPerms[k] || {});
+                });
+                Object.keys(savedPerms).forEach(function (k) {
+                    if (!perms[k]) perms[k] = savedPerms[k];
+                });
+                perms = normalizePerms(applyPermissionDeps(perms));
                 document.querySelectorAll('.sidebar-nav .tab[data-tab]').forEach(function (tab) {
                     var key = tab.dataset.tab;
                     if (!key) return;
