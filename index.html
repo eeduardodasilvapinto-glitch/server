@@ -10,6 +10,7 @@
 
     <script>
         function toggleTheme() {
+            document.body.classList.add('theme-transition');
             const html = document.documentElement;
             const icon = document.getElementById('themeIcon');
             if (html.getAttribute('data-theme') === 'light') {
@@ -21,6 +22,7 @@
                 localStorage.setItem('theme', 'light');
                 icon.className = 'fi fi-rr-sun';
             }
+            setTimeout(() => document.body.classList.remove('theme-transition'), 400);
         }
         if (localStorage.getItem('theme') === 'light') {
             document.documentElement.setAttribute('data-theme', 'light');
@@ -52,6 +54,11 @@
         :root {
             --bg: #0f172a;
             --surface: rgba(30, 41, 59, 0.45);
+            --priority-alta: #ef4444;
+            --priority-media: #facc15;
+            --priority-baixa: #4ade80;
+            --role-gestor: #f97316;
+            --role-admin: #ef4444;
             --surface2: rgba(30, 41, 59, 0.65);
             --border: rgba(255, 255, 255, 0.08);
             --border-hover: rgba(255, 255, 255, 0.15);
@@ -74,6 +81,9 @@
             --success: #10b981;
             --warning: #f59e0b;
             --red: #ef4444;
+            --red-light: #f87171;
+            --green-light: #4ade80;
+            --yellow-light: #facc15;
             --opacity-color: 255, 255, 255;
             --icon-filter: invert(1);
             --bg-card: #1e293b;
@@ -83,6 +93,14 @@
         [data-theme="light"] {
             --bg: #f8fafc;
             --surface: rgba(255, 255, 255, 1);
+            --priority-alta: #dc2626;
+            --priority-media: #ca8a04;
+            --priority-baixa: #16a34a;
+            --role-gestor: #ea580c;
+            --role-admin: #dc2626;
+            --red-light: #ef4444;
+            --green-light: #22c55e;
+            --yellow-light: #eab308;
             --surface2: rgba(255, 255, 255, 1);
             --border: rgba(0, 0, 0, 0.08);
             --border-hover: rgba(0, 0, 0, 0.15);
@@ -96,6 +114,11 @@
             --cursor-color: #6366f1;
         }
 
+
+        body.theme-transition,
+        body.theme-transition * {
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, filter 0.3s ease !important;
+        }
 
         body {
             font-family: 'Outfit', 'Segoe UI', system-ui, sans-serif;
@@ -7196,6 +7219,10 @@
             height: 1.1em;
             margin-right: 4px;
             filter: var(--icon-filter);
+            fill: currentColor;
+        }
+        .svg-icon path {
+            fill: inherit;
         }
 
         [data-theme="light"] .sidebar-nav .tab.active .svg-icon {
@@ -7405,12 +7432,12 @@
                                         <div class="bc-opt selected" data-value="" onclick="selectBC('pri','')">Manter
                                             prioridade
                                         </div>
-                                        <div class="bc-opt" data-value="alta" onclick="selectBC('pri','alta')"><i class="fi fi-rr-circle" style="color:#ef4444"></i> Alta
+                                        <div class="bc-opt" data-value="alta" onclick="selectBC('pri','alta')"><i class="fi fi-rr-circle" style="color:var(--priority-alta)"></i> Alta
                                         </div>
-                                        <div class="bc-opt" data-value="media" onclick="selectBC('pri','media')"><i class="fi fi-rr-circle" style="color:#eab308"></i>
+                                        <div class="bc-opt" data-value="media" onclick="selectBC('pri','media')"><i class="fi fi-rr-circle" style="color:var(--priority-media)"></i>
                                             Média
                                         </div>
-                                        <div class="bc-opt" data-value="baixa" onclick="selectBC('pri','baixa')"><i class="fi fi-rr-circle" style="color:#22c55e"></i>
+                                        <div class="bc-opt" data-value="baixa" onclick="selectBC('pri','baixa')"><i class="fi fi-rr-circle" style="color:var(--priority-baixa)"></i>
                                             Baixa
                                         </div>
                                     </div>
@@ -10009,7 +10036,7 @@
                 // Atualiza label
                 var labels = {
                     cat: { '': 'Manter categoria', 'vendas': '<i class="fi fi-rr-chart-line-up"></i> Vendas', 'marketing': '<i class="fi fi-rr-megaphone"></i> Marketing', 'financeiro': '<i class="fi fi-rr-sack-dollar"></i> Financeiro', 'produto': '<i class="fi fi-rr-bullseye"></i> Produto', 'operacional': '<i class="fi fi-rr-settings"></i> Operacional', 'rh': '<i class="fi fi-rr-users"></i> Pessoas & RH' },
-                    pri: { '': 'Manter prioridade', 'alta': '<i class="fi fi-rr-arrow-up" style="color:var(--red)"></i> Alta', 'media': '<i class="fi fi-rr-minus" style="color:#facc15"></i> Média', 'baixa': '<i class="fi fi-rr-arrow-down" style="color:#4ade80"></i> Baixa' },
+                    pri: { '': 'Manter prioridade', 'alta': '<i class="fi fi-rr-arrow-up" style="color:var(--priority-alta)"></i> Alta', 'media': '<i class="fi fi-rr-minus" style="color:var(--priority-media)"></i> Média', 'baixa': '<i class="fi fi-rr-arrow-down" style="color:var(--priority-baixa)"></i> Baixa' },
                     prazo: { '': 'Manter prazo', 'curto': '<i class="fi fi-rr-clock"></i> Curto', 'medio': '<i class="fi fi-rr-calendar"></i> Médio', 'longo': '<i class="fi fi-rr-hourglass"></i> Longo' }
                 };
                 labelEl.innerHTML = labels[which][value] || value;
@@ -12012,8 +12039,8 @@
             // ── Doc Min Role Dropdown ──
             var DOC_MIN_ROLES = [
                 { value: 'user', label: '<i class="fi fi-rr-user"></i> Todos (Colaborador+)' },
-                { value: 'gestor', label: '<i class="fi fi-rr-circle" style="color:#f97316"></i> Gestor+' },
-                { value: 'admin', label: '<i class="fi fi-rr-circle" style="color:#ef4444"></i> Apenas Admin' },
+                { value: 'gestor', label: '<i class="fi fi-rr-circle" style="color:var(--role-gestor)"></i> Gestor+' },
+                { value: 'admin', label: '<i class="fi fi-rr-circle" style="color:var(--role-admin)"></i> Apenas Admin' },
             ];
             var docMinRoleOpen = false;
             var editDocMinRoleOpen = false;
@@ -14006,7 +14033,7 @@
                         '<td>' + lc + '</td>' +
                         '<td class="crm-val">' + fmtVal(values['lost'] || 0) + '</td>' +
                         '<td>' + lostPct.toFixed(1) + '%</td>' +
-                        '<td style="color:#f87171">—</td>' +
+                        '<td style="color:var(--red-light)">—</td>' +
                         '</tr>';
                 }
                 document.getElementById('metricaConvBody').innerHTML = tableHtml;
@@ -15413,7 +15440,7 @@
                 // Card 6: Oportunidades (simplified list in fin-card)
                 var ops = r.oportunidades || [];
                 var opsHtml = ops.map(function (o) {
-                    var icon = o.prioridade === 'alta' ? '<img src="fire-flame-curved.svg" class="svg-icon" style="margin:0; filter:none">' : o.prioridade === 'media' ? '⚡' : '<i class="fi fi-rr-snowflake"></i>';
+                    var icon = o.prioridade === 'alta' ? '<img src="fire-flame-curved.svg" class="svg-icon" style="margin:0">' : o.prioridade === 'media' ? '⚡' : '<i class="fi fi-rr-snowflake"></i>';
                     var tag = o.prioridade === 'alta' ? 'an-tag-high' : o.prioridade === 'media' ? 'an-tag-mid' : 'an-tag-low';
                     return '<div class="an-ops-mini-item">' +
                         '<span>' + icon + '</span>' +
