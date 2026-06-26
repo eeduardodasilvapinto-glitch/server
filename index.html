@@ -15779,6 +15779,9 @@
                 var overlay = document.getElementById('empFormOverlay');
                 var adminFields = document.getElementById('empFormAdminFields');
                 if (!id) {
+                    // Restore original admin fields HTML for create mode
+                    if (!window._empAdminFieldsOriginal) window._empAdminFieldsOriginal = document.getElementById('empFormAdminFields').innerHTML;
+                    document.getElementById('empFormAdminFields').innerHTML = window._empAdminFieldsOriginal;
                     document.getElementById('empFormTitle').textContent = 'Nova Empresa';
                     document.getElementById('empFormName').value = '';
                     document.getElementById('empFormAdminName').value = '';
