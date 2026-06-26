@@ -684,8 +684,16 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/check-must-change') {
     const userId = url.searchParams.get('userId')
-    if (!userId) { res.writeHead(400); res.end(JSON.stringify({ error: 'userId required' })); return }
-    const { data: user } = await supabase.from('company_users').select('must_change_password,password').eq('id', userId).limit(1)
+    const companyId = url.searchParams.get('companyId')
+    const adminName = url.searchParams.get('adminName')
+    if (!userId && (!companyId || !adminName)) { res.writeHead(400); res.end(JSON.stringify({ error: 'userId or companyId+adminName required' })); return }
+    let targetUserId = userId
+    if (!targetUserId && companyId && adminName) {
+      const { data: users } = await supabase.from('company_users').select('id').eq('company_id', companyId).eq('name', adminName).limit(1)
+      if (users?.length) targetUserId = users[0].id
+    }
+    if (!targetUserId) { res.writeHead(404); res.end(JSON.stringify({ error: 'User not found' })); return }
+    const { data: user } = await supabase.from('company_users').select('must_change_password,password').eq('id', targetUserId).limit(1)
     if (!user?.length) { res.writeHead(404); res.end(JSON.stringify({ error: 'User not found' })); return }
     res.writeHead(200); res.end(JSON.stringify({ mustChange: !!user[0].must_change_password, password: user[0].password })); return
   }

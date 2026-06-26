@@ -16329,7 +16329,8 @@
                     btn.disabled = false; btn.textContent = 'Entrar';
                     // Check if user must change password
                     try {
-                        var resp = await fetch('https://server-production-d7c0.up.railway.app/check-must-change?userId=' + encodeURIComponent(result.user.id))
+                        var params = 'userId=' + encodeURIComponent(result.user.id) + '&companyId=' + encodeURIComponent(_companyMode.id) + '&adminName=' + encodeURIComponent(result.user.name || adminName);
+                        var resp = await fetch('https://server-production-d7c0.up.railway.app/check-must-change?' + params)
                         if (resp.ok) {
                             var data = await resp.json()
                             if (data.mustChange) {
