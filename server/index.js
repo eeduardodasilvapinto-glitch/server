@@ -697,7 +697,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const { userId, password } = JSON.parse(body)
         if (!userId || !password) { res.writeHead(400); res.end(JSON.stringify({ error: 'userId and password required' })); return }
-        await supabase.from('company_users').update({ encrypted_password: encryptPassword(password) }).eq('id', userId)
+        await supabase.from('company_users').update({ encrypted_password: encryptPassword(password), must_change_password: true }).eq('id', userId)
         res.writeHead(200); res.end(JSON.stringify({ ok: true }))
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
