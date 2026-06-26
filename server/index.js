@@ -608,11 +608,12 @@ const server = http.createServer(async (req, res) => {
     req.on('data', c => body += c)
     req.on('end', async () => {
       try {
-        const { sessionId, currentPassword, newPassword } = JSON.parse(body)
-        if (!sessionId || !currentPassword || !newPassword) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId, currentPassword, newPassword required' })); return }
+        const { sessionId, userId: directUserId, currentPassword, newPassword } = JSON.parse(body)
+        if ((!sessionId && !directUserId) || !currentPassword || !newPassword) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId or userId, currentPassword, newPassword required' })); return }
         if (newPassword.length < 4) { res.writeHead(400); res.end(JSON.stringify({ error: 'Senha deve ter no mínimo 4 caracteres' })); return }
-        const entry = sessions.get(sessionId)
-        const userId = entry?.userId
+        let userId = null
+        if (sessionId) { const entry = sessions.get(sessionId); userId = entry?.userId }
+        else userId = directUserId
         if (!userId) { res.writeHead(401); res.end(JSON.stringify({ error: 'Usuário não encontrado' })); return }
         const { data: user } = await supabase.from('company_users').select('id,password').eq('id', userId).limit(1)
         if (!user?.length) { res.writeHead(401); res.end(JSON.stringify({ error: 'Usuário não encontrado' })); return }
@@ -679,6 +680,14 @@ const server = http.createServer(async (req, res) => {
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
     })
     return
+  }
+
+  if (pathname === '/check-must-change') {
+    const userId = url.searchParams.get('userId')
+    if (!userId) { res.writeHead(400); res.end(JSON.stringify({ error: 'userId required' })); return }
+    const { data: user } = await supabase.from('company_users').select('must_change_password,password').eq('id', userId).limit(1)
+    if (!user?.length) { res.writeHead(404); res.end(JSON.stringify({ error: 'User not found' })); return }
+    res.writeHead(200); res.end(JSON.stringify({ mustChange: !!user[0].must_change_password, password: user[0].password })); return
   }
 
   if (pathname === '/encrypt-password' && req.method === 'POST') {
