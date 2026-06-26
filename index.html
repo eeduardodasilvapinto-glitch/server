@@ -16384,26 +16384,6 @@
             function applyCompanyMode() {
                 var isCompany = isCompanyMode();
                 var isGlobalAdmin = isCompany && _companyMode && _companyMode.isGlobalAdmin;
-                var savedPerms = isCompany && _companyMode ? (_companyMode.permissions || {}) : {};
-                var defaults = empDefaultPerms();
-                var perms = {};
-                Object.keys(defaults).forEach(function (k) {
-                    perms[k] = Object.assign({}, defaults[k], savedPerms[k] || {});
-                });
-                Object.keys(savedPerms).forEach(function (k) {
-                    if (!perms[k]) perms[k] = savedPerms[k];
-                });
-                if (perms) {
-                    PERM_TREE_KEYS.forEach(function(key) {
-                        var node = PERM_TREE[key];
-                        if (!node.children) return;
-                        var parentAccess = perms[key] && perms[key].access !== false;
-                        node.children.forEach(function(childKey) {
-                            if (!perms[childKey]) perms[childKey] = {};
-                            if (!parentAccess) perms[childKey].access = false;
-                        });
-                    });
-                }
                 document.querySelectorAll('.sidebar-nav .tab[data-tab]').forEach(function (tab) {
                     var key = tab.dataset.tab;
                     if (!key) return;
@@ -16411,12 +16391,7 @@
                     if (key === 'empresas') { tab.style.display = 'none'; return; }
                     if (key === 'usuarios') { tab.style.display = ''; return; }
                     if (key === 'configuracoes') { tab.style.display = 'none'; return; }
-                    if (isCompany) {
-                        var p = perms[key] || {};
-                        tab.style.display = p.access ? '' : 'none';
-                    } else {
-                        tab.style.display = '';
-                    }
+                    tab.style.display = '';
                 });
                 document.getElementById('sidebarSettingsBtn').style.display = isGlobalAdmin ? '' : 'none';
                 if (!isCompany && typeof api !== 'undefined') {
