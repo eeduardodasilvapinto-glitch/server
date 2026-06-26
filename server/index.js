@@ -674,6 +674,25 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (pathname === '/update-user-perms' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      try {
+        const { sessionId, userId, permissions } = JSON.parse(body)
+        if (!sessionId || !userId || !permissions) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId, userId, permissions required' })); return }
+        const entry = sessions.get(sessionId)
+        const requesterId = entry?.userId
+        if (!requesterId) { res.writeHead(401); res.end(JSON.stringify({ error: 'Não autorizado' })); return }
+        const { data: requester } = await supabase.from('company_users').select('role,company_id').eq('id', requesterId).limit(1)
+        if (!requester?.length || requester[0].role !== 'admin') { res.writeHead(403); res.end(JSON.stringify({ error: 'Apenas administradores' })); return }
+        await supabase.from('company_users').update({ permissions }).eq('id', userId)
+        res.writeHead(200); res.end(JSON.stringify({ ok: true }))
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+    })
+    return
+  }
+
   if (pathname === '/company-desc-status' && req.method === 'GET') {
     const companyId = url.searchParams.get('companyId')
     if (!companyId) { res.writeHead(400); res.end(JSON.stringify({ error: 'companyId required' })); return }
