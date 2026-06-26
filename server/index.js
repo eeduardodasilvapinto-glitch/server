@@ -686,8 +686,11 @@ const server = http.createServer(async (req, res) => {
     const userId = url.searchParams.get('userId')
     const companyId = url.searchParams.get('companyId')
     const adminName = url.searchParams.get('adminName')
-    if (!userId && (!companyId || !adminName)) { res.writeHead(400); res.end(JSON.stringify({ error: 'userId or companyId+adminName required' })); return }
-    let targetUserId = userId
+    let targetUserId = null
+    if (userId) {
+      const { data: user } = await supabase.from('company_users').select('id').eq('id', userId).limit(1)
+      if (user?.length) targetUserId = user[0].id
+    }
     if (!targetUserId && companyId && adminName) {
       const { data: users } = await supabase.from('company_users').select('id').eq('company_id', companyId).eq('name', adminName).limit(1)
       if (users?.length) targetUserId = users[0].id
