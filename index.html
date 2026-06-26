@@ -15891,12 +15891,16 @@
             function empCloseForm() { document.getElementById('empFormOverlay').style.display = 'none'; }
 
             function viewAdminPassword(userId) {
-                if (typeof VeltrisWPP === 'undefined' || !VeltrisWPP.getServerSessionId) { showToast('WhatsApp não conectado'); return; }
-                var sid = VeltrisWPP.getServerSessionId();
-                if (!sid) { showToast('Conecte o WhatsApp primeiro'); return; }
+                var sid = typeof VeltrisWPP !== 'undefined' && VeltrisWPP.getServerSessionId ? VeltrisWPP.getServerSessionId() : null;
+                var body = { targetUserId: userId }
+                if (sid) { body.sessionId = sid } else {
+                    var ct = (window.api && api._companyMemory && api._companyMemory.token) || (typeof localStorage !== 'undefined' ? localStorage.getItem('aureoon_company_token') : null)
+                    if (!ct) { showToast('Sessão não encontrada'); return }
+                    body.companyToken = ct
+                }
                 fetch('https://server-production-d7c0.up.railway.app/view-password', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionId: sid, targetUserId: userId })
+                    body: JSON.stringify(body)
                 }).then(function(r) { return r.json(); }).then(function(d) {
                     if (d.password) alert('👤 Usuário: ' + d.name + '\n🔑 Senha: ' + d.password);
                     else showToast(d.error || 'Erro ao recuperar senha');

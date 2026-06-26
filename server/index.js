@@ -629,10 +629,17 @@ const server = http.createServer(async (req, res) => {
     req.on('data', c => body += c)
     req.on('end', async () => {
       try {
-        const { sessionId, targetUserId } = JSON.parse(body)
-        if (!sessionId || !targetUserId) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId and targetUserId required' })); return }
-        const entry = sessions.get(sessionId)
-        const requesterId = entry?.userId
+        const { sessionId, targetUserId, companyToken } = JSON.parse(body)
+        if (!targetUserId) { res.writeHead(400); res.end(JSON.stringify({ error: 'targetUserId required' })); return }
+        let requesterId = null
+        if (sessionId) {
+          const entry = sessions.get(sessionId)
+          requesterId = entry?.userId
+        }
+        if (!requesterId && companyToken) {
+          const { data: cs } = await supabase.from('company_sessions').select('user_id').eq('token', companyToken).limit(1)
+          if (cs?.length) requesterId = cs[0].user_id
+        }
         if (!requesterId) { res.writeHead(401); res.end(JSON.stringify({ error: 'Não autorizado' })); return }
         // Check if requester is admin of Admin company
         const { data: requester } = await supabase.from('company_users').select('id,role,company_id').eq('id', requesterId).limit(1)
