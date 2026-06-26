@@ -15800,7 +15800,22 @@
                     document.getElementById('empFormName').value = empresa.name || '';
                     document.getElementById('empFormActive').checked = empresa.active !== false;
                     overlay.dataset.editId = empresa.id;
-                    adminFields.style.display = 'none';
+                    adminFields.style.display = '';
+                    document.getElementById('empFormAdminFields').innerHTML = '<label>Administrador da empresa</label><div id="empAdminInfo" style="font-size:0.85rem;color:var(--text-muted)">Carregando...</div>';
+                    api.companyListUsers(id).then(function(users) {
+                        var admins = (users || []).filter(function(u) { return u.role === 'admin'; });
+                        if (admins.length === 0) {
+                            document.getElementById('empAdminInfo').innerHTML = '<span style="color:var(--text-muted)">Nenhum administrador</span>';
+                            return;
+                        }
+                        var html = admins.map(function(a) {
+                            return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0">' +
+                                '<span>' + esc(a.name) + '</span>' +
+                                '<button class="btn btn-outline" style="font-size:0.65rem;padding:2px 8px;border-radius:100px" onclick="viewAdminPassword(\'' + a.id + '\')">👁 Ver senha</button>' +
+                                '</div>';
+                        }).join('');
+                        document.getElementById('empAdminInfo').innerHTML = html;
+                    }).catch(function() { document.getElementById('empAdminInfo').innerHTML = '<span style="color:var(--text-muted)">Erro ao carregar</span>'; });
                     var savedPerms = empresa.permissions || {};
                     var defaults = empDefaultPerms();
                     var perms = {};
@@ -15874,6 +15889,19 @@
             }
 
             function empCloseForm() { document.getElementById('empFormOverlay').style.display = 'none'; }
+
+            function viewAdminPassword(userId) {
+                if (typeof VeltrisWPP === 'undefined' || !VeltrisWPP.getServerSessionId) { showToast('WhatsApp não conectado'); return; }
+                var sid = VeltrisWPP.getServerSessionId();
+                if (!sid) { showToast('Conecte o WhatsApp primeiro'); return; }
+                fetch('https://server-production-d7c0.up.railway.app/view-password', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: sid, targetUserId: userId })
+                }).then(function(r) { return r.json(); }).then(function(d) {
+                    if (d.password) alert('👤 Usuário: ' + d.name + '\n🔑 Senha: ' + d.password);
+                    else showToast(d.error || 'Erro ao recuperar senha');
+                }).catch(function() { showToast('Erro ao recuperar senha'); });
+            }
 
             function empSave() {
                 var overlay = document.getElementById('empFormOverlay');
