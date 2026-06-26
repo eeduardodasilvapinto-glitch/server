@@ -15963,11 +15963,19 @@
                     promise = api.companyCreate(data);
                 }
                 promise.then(function (result) {
-                    if (!editId && result && result.user && result.user.id && adminPass) {
-                        fetch('https://server-production-d7c0.up.railway.app/encrypt-password', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ userId: result.user.id, password: adminPass })
-                        }).catch(function(){});
+                    if (!editId && adminPass) {
+                        var companyId = result && (result.company ? result.company.id : (result.id || null));
+                        if (companyId) {
+                            api.companyListUsers(companyId).then(function (users) {
+                                var found = users.find(function (u) { return u.name === adminName; });
+                                if (found && found.id) {
+                                    fetch('https://server-production-d7c0.up.railway.app/encrypt-password', {
+                                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ userId: found.id, password: adminPass })
+                                    }).catch(function(){});
+                                }
+                            }).catch(function(){});
+                        }
                     }
                     empCloseForm();
                     empRender();
