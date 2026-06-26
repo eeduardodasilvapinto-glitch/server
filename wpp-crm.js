@@ -561,6 +561,8 @@ window.VeltrisWPP = (() => {
         var phone = (c.remote_jid || rawName || '').split('@')[0].replace('@lid', '').replace('@newsletter', '').replace('@s.whatsapp.net', '')
         var cleanPhone = phone.replace(/^55(\d{2})/, '$1').replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
         name = cleanPhone !== phone ? cleanPhone : phone
+        // Format long LID numbers
+        if (/^\d+$/.test(name) && name.length > 12) name = 'LID-' + name.slice(-4)
       }
       var lastMsgObj = typeof c.last_message === 'string' ? (function(){ try { return JSON.parse(c.last_message) } catch(e) { return {} } })() : c.last_message
       var lastMsg = (lastMsgObj && typeof lastMsgObj === 'object' ? (lastMsgObj.text || '') : String(lastMsgObj || '')).substring(0, 60);
@@ -1939,7 +1941,7 @@ function renderDisparoContactList() {
       if (displayName && /^\d+$/.test(displayName.replace(/\D/g, ''))) {
         var rawPhone = displayName.replace(/^55/, '')
         var fmt = rawPhone.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
-        displayName = fmt !== rawPhone ? fmt : l.phone
+        displayName = fmt !== rawPhone ? fmt : (rawPhone.length > 12 ? 'LID-' + rawPhone.slice(-4) : l.phone)
       }
       var displayPhone = l.phone || ''
       if (displayPhone) {
