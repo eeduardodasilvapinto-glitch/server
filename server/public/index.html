@@ -12124,8 +12124,9 @@
                         tbody.appendChild(row);
                     });
                 }).catch(function (e) {
-                    showUserStatus('Erro ao carregar usuarios.', 'err');
+                    showToast('Erro na operacao.');
                 });
+                } catch (e) { showToast('Erro: ' + e.message); }
             }
 
             function saveUser() {
@@ -15941,6 +15942,7 @@
             }
 
             function empSave() {
+                try {
                 var overlay = document.getElementById('empFormOverlay');
                 var name = document.getElementById('empFormName').value.trim();
                 if (!name) { showToast('Informe o nome da empresa'); return; }
