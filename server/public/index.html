@@ -1925,6 +1925,9 @@
             height: 14px;
             cursor: pointer;
         }
+        .emp-perm-group { margin-bottom: 6px; }
+        .emp-perm-child { padding-left: 24px; opacity: 0.85; }
+        .emp-perm-child .perm-label { font-size: 0.72rem !important; }
 
         .settings-status.err {
             display: block;
@@ -15712,10 +15715,54 @@
             };
             var _aiTabs = { dashboard: 1, conteudos: 1, financeiro: 1, crm: 1, metricas: 1 };
 
+            var PERM_TREE = {
+                wpp: { label: 'WhatsApp', children: ['wpp_chats','wpp_clientes','wpp_agenda','wpp_metricas','wpp_disparos','wpp_tags'] },
+                ia: { label: 'IA', children: ['ia_chat'] },
+                dashboard: { label: 'Dashboard', children: ['dashboard_ai'] },
+                crm: { label: 'CRM', children: ['crm_ai'] },
+                metricas: { label: 'Métricas', children: ['metricas_ai'] },
+                conteudos: { label: 'Conteúdos', children: ['conteudos_ai'] },
+                financeiro: { label: 'Financeiro', children: ['financeiro_ai'] }
+            };
+            var PERM_TREE_KEYS = Object.keys(PERM_TREE);
+            var PERM_CHILDREN = {};
+            PERM_TREE_KEYS.forEach(function(k) { (PERM_TREE[k].children || []).forEach(function(c) { PERM_CHILDREN[c] = k; }); });
+
+            function normalizePerms(perms) {
+                if (!perms) perms = {};
+                PERM_TREE_KEYS.forEach(function(key) {
+                    var node = PERM_TREE[key];
+                    if (!node.children) return;
+                    var p = perms[key] || {};
+                    node.children.forEach(function(childKey) {
+                        if (perms[childKey] === undefined) perms[childKey] = { access: p.access !== false };
+                    });
+                });
+                return perms;
+            }
+            function applyPermissionDeps(perms) {
+                if (!perms) return perms;
+                PERM_TREE_KEYS.forEach(function(key) {
+                    var node = PERM_TREE[key];
+                    if (!node.children) return;
+                    var parentAccess = perms[key] && perms[key].access !== false;
+                    node.children.forEach(function(childKey) {
+                        if (!perms[childKey]) perms[childKey] = {};
+                        if (!parentAccess) perms[childKey].access = false;
+                    });
+                });
+                return perms;
+            }
+
             function empDefaultPerms() {
                 var o = {};
                 Object.keys(_tabLabels).forEach(function (k) { o[k] = { access: k !== 'empresas' && k !== 'usuarios' && k !== 'configuracoes' }; });
                 o.ia.chat = true;
+                PERM_TREE_KEYS.forEach(function(key) {
+                    var node = PERM_TREE[key];
+                    if (!node.children) return;
+                    node.children.forEach(function(childKey) { if (o[childKey] === undefined) o[childKey] = { access: o[key] && o[key].access !== false }; });
+                });
                 return o;
             }
 
@@ -15781,9 +15828,14 @@
             }
 
             function renderEmpPerms(perms) {
+                perms = normalizePerms(applyPermissionDeps(perms));
                 var html = '';
-                Object.keys(perms).forEach(function (key) {
+                var flatKeys = Object.keys(perms).filter(function(k) { return !PERM_CHILDREN[k]; });
+                flatKeys.forEach(function(key) {
                     var p = perms[key];
+                    var node = PERM_TREE[key];
+                    var isParent = node && node.children && node.children.length > 0;
+                    html += '<div class="emp-perm-group' + (isParent ? ' perm-parent' : '') + '">';
                     html += '<div class="emp-perm-row">' +
                         '<span class="perm-label">' + (_tabLabels[key] || key) + '</span>' +
                         '<div class="perm-toggles">' +
@@ -15791,6 +15843,17 @@
                     if (_aiTabs[key]) html += '<label><input type="checkbox" data-perm="' + key + '" data-type="ai" ' + (p.ai !== false && p.access !== false ? 'checked' : '') + ' ' + (p.access === false ? 'disabled' : '') + '> IA</label>';
                     if (key === 'ia') html += '<label><input type="checkbox" data-perm="ia" data-type="chat" ' + (p.chat !== false ? 'checked' : '') + '> Chat</label>';
                     html += '</div></div>';
+                    if (isParent) {
+                        node.children.forEach(function(childKey) {
+                            var cp = perms[childKey] || {};
+                            html += '<div class="emp-perm-row emp-perm-child">' +
+                                '<span class="perm-label" style="opacity:0.7;font-size:0.78rem">' + childKey.replace(/^wpp_/,'').replace(/_/g,' ') + '</span>' +
+                                '<div class="perm-toggles">' +
+                                '<label><input type="checkbox" data-perm="' + childKey + '" data-type="access" ' + (cp.access ? 'checked' : '') + ' ' + (p.access === false ? 'disabled' : '') + ' onchange="toggleAccessPerm(this,\'' + childKey + '\')"> Acesso</label>' +
+                                '</div></div>';
+                        });
+                    }
+                    html += '</div>';
                 });
                 document.getElementById('empFormPerms').innerHTML = html;
             }
@@ -15798,13 +15861,21 @@
             function toggleAccessPerm(cb, key) {
                 var row = cb.closest('.emp-perm-row');
                 if (!row) return;
+                var checked = cb.checked;
                 var aiCb = row.querySelector('input[data-type="ai"]');
                 if (aiCb) {
-                    if (!cb.checked) {
-                        aiCb.checked = false;
-                        aiCb.disabled = true;
-                    } else {
-                        aiCb.disabled = false;
+                    if (!checked) { aiCb.checked = false; aiCb.disabled = true; }
+                    else { aiCb.disabled = false; }
+                }
+                var group = cb.closest('.emp-perm-group');
+                if (group && group.querySelector('.emp-perm-child')) {
+                    var children = group.querySelectorAll('.emp-perm-child input[data-type="access"]');
+                    var parentIsParent = PERM_TREE[key] && PERM_TREE[key].children;
+                    if (parentIsParent && children.length) {
+                        children.forEach(function(childCb) {
+                            childCb.checked = checked;
+                            childCb.disabled = !checked;
+                        });
                     }
                 }
             }
@@ -16191,6 +16262,8 @@
             function applyCompanyMode() {
                 var isCompany = isCompanyMode();
                 var isGlobalAdmin = isCompany && _companyMode && _companyMode.isGlobalAdmin;
+                var perms = isCompany && _companyMode ? normalizePerms(_companyMode.permissions || {}) : {};
+                applyPermissionDeps(perms);
                 document.querySelectorAll('.sidebar-nav .tab[data-tab]').forEach(function (tab) {
                     var key = tab.dataset.tab;
                     if (!key) return;
@@ -16207,7 +16280,12 @@
                         tab.style.display = 'none';
                         return;
                     }
-                    tab.style.display = '';
+                    if (isCompany) {
+                        var p = perms[key] || {};
+                        tab.style.display = p.access ? '' : 'none';
+                    } else {
+                        tab.style.display = '';
+                    }
                 });
                 document.getElementById('sidebarSettingsBtn').style.display = isGlobalAdmin ? '' : 'none';
                 if (!isCompany && typeof api !== 'undefined') {

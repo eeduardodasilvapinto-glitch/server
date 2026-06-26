@@ -121,6 +121,15 @@ window.VeltrisWPP = (() => {
 
   function initTabs() {
     qsa('[data-wpp-tab]').forEach(btn => {
+      var tab = btn.dataset.wppTab;
+      if (S._serverSessionId && tab !== 'whatsapp' && tab !== 'chat') {
+        var perms = (typeof window._companyMode !== 'undefined' && window._companyMode && window._companyMode.permissions);
+        var wpp = perms ? perms.wpp : null;
+        if (wpp && wpp.access !== false) {
+          var subPerm = perms['wpp_' + tab];
+          if (subPerm && subPerm.access === false) { btn.style.display = 'none'; return; }
+        }
+      }
       btn.addEventListener('click', () => switchTab(btn.dataset.wppTab));
     });
   }
