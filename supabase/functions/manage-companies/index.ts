@@ -136,7 +136,25 @@ serve(async (req) => {
             permissions: company.permissions,
           },
           user: { id: user.id, name: user.name, role: user.role },
+          forcePasswordChange: user.must_change_password === true,
         });
+      }
+
+      case "change_password": {
+        const { userId, currentPassword, newPassword } = data;
+        if (!userId || !currentPassword || !newPassword) return json({ error: "Campos obrigatórios: userId, currentPassword, newPassword" }, 400);
+        if (newPassword.length < 4) return json({ error: "Mínimo 4 caracteres" }, 400);
+        const { data: chkUser } = await supabase
+          .from("company_users")
+          .select("password")
+          .eq("id", userId)
+          .maybeSingle();
+        if (!chkUser) return json({ error: "Usuário não encontrado" }, 404);
+        const hashedCurrent = await hashPassword(currentPassword);
+        if (chkUser.password !== hashedCurrent) return json({ error: "Senha atual incorreta" }, 401);
+        const hashedNew = await hashPassword(newPassword);
+        await supabase.from("company_users").update({ password: hashedNew, must_change_password: false }).eq("id", userId);
+        return json({ ok: true });
       }
 
       case "verify": {
@@ -179,7 +197,7 @@ serve(async (req) => {
           const hashedPw = await hashPassword(adminPassword);
           const { error: userErr } = await supabase
             .from("company_users")
-            .insert({ company_id: company.id, name: adminName, password: hashedPw, role: "admin", active: true });
+            .insert({ company_id: company.id, name: adminName, password: hashedPw, role: "admin", active: true, must_change_password: true });
           if (userErr) console.error("Error creating admin user:", userErr.message);
         }
         return json({ company });
@@ -240,6 +258,7 @@ serve(async (req) => {
             password: hashedPw,
             role: role || "user",
             active: true,
+            must_change_password: true,
           })
           .select()
           .single();
