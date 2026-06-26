@@ -16324,22 +16324,11 @@
                     startPermissionPolling();
                     showToast('Bem-vindo, ' + result.user.name);
                     btn.disabled = false; btn.textContent = 'Entrar';
-                    // Check if user must change password FIRST
-                    var mustChangePass = false;
-                    try {
-                        var params = 'userId=' + encodeURIComponent(result.user.id) + '&companyId=' + encodeURIComponent(_companyMode.id) + '&adminName=' + encodeURIComponent(result.user.name || adminName);
-                        var resp = await fetch('https://server-production-d7c0.up.railway.app/check-must-change?' + params)
-                        if (resp.ok) {
-                            var data = await resp.json()
-                            if (data.mustChange) {
-                                mustChangePass = true;
-                                document.getElementById('changePassOverlay').dataset.userId = result.user.id;
-                                document.getElementById('changePassOverlay').dataset.passHash = data.password;
-                                document.getElementById('changePassOverlay').style.display = 'flex';
-                            }
-                        }
-                    } catch (e) {}
-                    if (!mustChangePass) {
+                    // Check if user must change password
+                    if (result.forcePasswordChange) {
+                        document.getElementById('changePassOverlay').dataset.userId = result.user.id;
+                        document.getElementById('changePassOverlay').style.display = 'flex';
+                    } else {
                         checkFirstLogin();
                         render();
                         try { renderFinanceCharts(); } catch (e) { }
@@ -16363,11 +16352,7 @@
                 err.style.display = 'none';
                 var btn = document.getElementById('changePassBtn'); btn.disabled = true; btn.textContent = 'Alterando...';
                 try {
-                    var resp = await fetch('https://server-production-d7c0.up.railway.app/change-password', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: userId, currentPassword: current, newPassword: newPass })
-                    });
-                    var data = await resp.json();
+                    var data = await api._companyFetch('change_password', { userId: userId, currentPassword: current, newPassword: newPass });
                     if (data.ok) {
                         overlay.style.display = 'none';
                         document.getElementById('changePassCurrent').value = '';
@@ -16377,7 +16362,7 @@
                     } else {
                         err.textContent = data.error || 'Erro ao alterar senha'; err.style.display = 'block';
                     }
-                } catch (e) { err.textContent = 'Erro de conexão'; err.style.display = 'block'; }
+                } catch (e) { err.textContent = e.message || 'Erro de conexão'; err.style.display = 'block'; }
                 btn.disabled = false; btn.textContent = 'Alterar Senha';
             }
 
