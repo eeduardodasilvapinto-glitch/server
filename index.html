@@ -16323,23 +16323,27 @@
                     applyCompanyMode();
                     startPermissionPolling();
                     showToast('Bem-vindo, ' + result.user.name);
-                    checkFirstLogin();
-                    render();
-                    try { renderFinanceCharts(); } catch (e) { }
                     btn.disabled = false; btn.textContent = 'Entrar';
-                    // Check if user must change password
+                    // Check if user must change password FIRST
+                    var mustChangePass = false;
                     try {
                         var params = 'userId=' + encodeURIComponent(result.user.id) + '&companyId=' + encodeURIComponent(_companyMode.id) + '&adminName=' + encodeURIComponent(result.user.name || adminName);
                         var resp = await fetch('https://server-production-d7c0.up.railway.app/check-must-change?' + params)
                         if (resp.ok) {
                             var data = await resp.json()
                             if (data.mustChange) {
+                                mustChangePass = true;
                                 document.getElementById('changePassOverlay').dataset.userId = result.user.id;
                                 document.getElementById('changePassOverlay').dataset.passHash = data.password;
                                 document.getElementById('changePassOverlay').style.display = 'flex';
                             }
                         }
                     } catch (e) {}
+                    if (!mustChangePass) {
+                        checkFirstLogin();
+                        render();
+                        try { renderFinanceCharts(); } catch (e) { }
+                    }
                 }).catch(function (e) {
                     err.textContent = e.message || 'Erro desconhecido'; err.style.display = 'block';
                     btn.disabled = false; btn.textContent = 'Entrar';
