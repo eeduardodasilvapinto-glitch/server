@@ -1,0 +1,21 @@
+-- Mestre IA: toggle global que controla TODAS as permissões de IA
+-- Não precisa de ALTER TABLE (JSONB já aceita qualquer chave)
+-- Apenas documentação da estrutura esperada:
+--
+-- Exemplo de permissões após implementação:
+-- {
+--   "global_ai": { "access": true },
+--   "dashboard": { "access": true, "ai": true },
+--   "dashboard_ai": { "access": true },
+--   "crm": { "access": true, "ai": true },
+--   "crm_ai": { "access": true },
+--   "metricas": { "access": true },
+--   "metricas_ai": { "access": true },
+--   "conteudos": { "access": true },
+--   "conteudos_ai": { "access": true },
+--   "financeiro": { "access": true },
+--   "financeiro_ai": { "access": true },
+--   "ia": { "access": true },
+--   "ia_chat": { "access": true },
+--   ...
+-- }
