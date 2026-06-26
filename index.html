@@ -15936,7 +15936,6 @@
             }
 
             function empSave() {
-                try {
                 var overlay = document.getElementById('empFormOverlay');
                 var name = document.getElementById('empFormName').value.trim();
                 if (!name) { showToast('Informe o nome da empresa'); return; }
@@ -15963,6 +15962,14 @@
                     data.adminPassword = adminPass;
                     promise = api.companyCreate(data);
                 }
+                promise.then(function () {
+                    empCloseForm();
+                    empRender();
+                    showToast('Empresa salva!');
+                }).catch(function (e) {
+                    showToast('Erro na operacao.');
+                });
+            }
                 promise.then(function () {
                     empCloseForm();
                     empRender();
