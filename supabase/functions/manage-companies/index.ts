@@ -157,6 +157,21 @@ serve(async (req) => {
         return json({ ok: true });
       }
 
+      case "force_change_password": {
+        const { userId, newPassword } = data;
+        if (!userId || !newPassword) return json({ error: "Campos obrigatórios: userId, newPassword" }, 400);
+        if (newPassword.length < 4) return json({ error: "Mínimo 4 caracteres" }, 400);
+        const { data: chkUser } = await supabase
+          .from("company_users")
+          .select("id")
+          .eq("id", userId)
+          .maybeSingle();
+        if (!chkUser) return json({ error: "Usuário não encontrado" }, 404);
+        const hashedNew = await hashPassword(newPassword);
+        await supabase.from("company_users").update({ password: hashedNew, must_change_password: false }).eq("id", userId);
+        return json({ ok: true });
+      }
+
       case "verify": {
         const authHeader = req.headers.get("x-company-auth");
         if (!authHeader) return json({ error: "Token não fornecido" }, 401);

@@ -8753,15 +8753,11 @@
 
         <!-- FORCE PASSWORD CHANGE OVERLAY -->
         <div class="modal-overlay" id="changePassOverlay">
-            <div class="modal" style="max-width:400px;text-align:center">
-                <h3 style="margin-bottom:8px">🔑 Troca de Senha Obrigatória</h3>
-                <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px">
+            <div class="modal" style="max-width:400px;text-align:center;padding:28px 32px">
+                <h3 style="margin-bottom:8px;font-size:1.1rem">🔑 Troca de Senha Obrigatória</h3>
+                <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:20px">
                     Esta é uma senha temporária. Crie uma nova senha para continuar.
                 </p>
-                <div class="settings-field">
-                    <label>Senha Atual</label>
-                    <input type="password" id="changePassCurrent" placeholder="Senha atual" />
-                </div>
                 <div class="settings-field">
                     <label>Nova Senha</label>
                     <input type="password" id="changePassNew" placeholder="Nova senha (mín. 4 caracteres)" />
@@ -8771,7 +8767,7 @@
                     <input type="password" id="changePassConfirm" placeholder="Repita a nova senha" />
                 </div>
                 <div class="login-error" id="changePassError" style="display:none"></div>
-                <button class="login-btn" id="changePassBtn" onclick="submitForceChangePassword()" style="margin-top:8px">Alterar Senha</button>
+                <button class="btn btn-primary" id="changePassBtn" onclick="submitForceChangePassword()" style="margin-top:12px;width:100%;padding:12px 20px;font-size:0.9rem">Alterar Senha</button>
             </div>
         </div>
 
@@ -16342,20 +16338,18 @@
             async function submitForceChangePassword() {
                 var overlay = document.getElementById('changePassOverlay');
                 var userId = overlay.dataset.userId;
-                var current = document.getElementById('changePassCurrent').value.trim();
                 var newPass = document.getElementById('changePassNew').value.trim();
                 var confirm = document.getElementById('changePassConfirm').value.trim();
                 var err = document.getElementById('changePassError');
-                if (!current || !newPass || !confirm) { err.textContent = 'Preencha todos os campos'; err.style.display = 'block'; return; }
+                if (!newPass || !confirm) { err.textContent = 'Preencha todos os campos'; err.style.display = 'block'; return; }
                 if (newPass.length < 4) { err.textContent = 'Mínimo 4 caracteres'; err.style.display = 'block'; return; }
                 if (newPass !== confirm) { err.textContent = 'Senhas não conferem'; err.style.display = 'block'; return; }
                 err.style.display = 'none';
                 var btn = document.getElementById('changePassBtn'); btn.disabled = true; btn.textContent = 'Alterando...';
                 try {
-                    var data = await api._companyFetch('change_password', { userId: userId, currentPassword: current, newPassword: newPass });
+                    var data = await api._companyFetch('force_change_password', { userId: userId, newPassword: newPass });
                     if (data.ok) {
                         overlay.style.display = 'none';
-                        document.getElementById('changePassCurrent').value = '';
                         document.getElementById('changePassNew').value = '';
                         document.getElementById('changePassConfirm').value = '';
                         if (typeof showToast === 'function') showToast('Senha alterada com sucesso!');
