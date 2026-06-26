@@ -2462,7 +2462,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Try static files from public/ fallback
-  const publicDir = path.join(process.cwd(), 'public')
+  const publicDir = path.join(process.cwd(), 'server', 'public')
   if (req.method === 'GET') {
     let fp = path.join(publicDir, pathname === '/' ? 'index.html' : pathname.substring(1))
     if (fp.startsWith(publicDir) && fs.existsSync(fp) && !fs.statSync(fp).isDirectory()) {
