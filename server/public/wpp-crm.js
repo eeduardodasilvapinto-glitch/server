@@ -2223,6 +2223,7 @@ function renderDisparoContactList() {
       _wcNewLeadDate = '';
       el('wcNewLeadDateSelected').textContent = 'Selecionar data';
       filterLeads();
+      apiGet('cadence_actions', { order: 'scheduled_at.desc' }).then(function(actions) { if (Array.isArray(actions)) S.cadence_actions = actions; }).catch(function(){})
     }
   }
 
@@ -2421,6 +2422,7 @@ function renderDisparoContactList() {
       overlay.style.display = 'none';
       filterLeads();
       if (typeof showToast === 'function') showToast('Cliente atualizado!');
+      apiGet('cadence_actions', { order: 'scheduled_at.desc' }).then(function(actions) { if (Array.isArray(actions)) S.cadence_actions = actions; }).catch(function(){})
     }
   }
 

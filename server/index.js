@@ -419,29 +419,29 @@ async function startSession(sessionId, userId, companyId) {
         const isMe = msg.key.fromMe
         // If message was SENT by the user (fromMe), don't create contacts
         if (isMe) {
-          let exCh = await findChat(jid, sessionId, companyId)
+          let fromMeChat = await findChat(jid, sessionId, companyId)
           // If not found by JID, try to find by contact linked to this phone
-          if (!exCh) {
+          if (!fromMeChat) {
             const contactForPhone = await findContactByPhone(phone, companyId)
             if (contactForPhone) {
               const { data: chatByContact } = await supabase.from('whatsapp_chats').select('id,remote_jid,contact_name').eq('contact_id', contactForPhone.id).limit(1)
               if (chatByContact?.length) {
-                exCh = chatByContact[0]
-                // Update remote_jid to current JID for future lookups
-                await supabase.from('whatsapp_chats').update({ remote_jid: jid }).eq('id', exCh.id)
+                fromMeChat = chatByContact[0]
+                await supabase.from('whatsapp_chats').update({ remote_jid: jid }).eq('id', fromMeChat.id)
               }
             }
           }
-          if (exCh) {
+          if (fromMeChat) {
             const txtShort = txt.substring(0, 200)
-            await supabase.from('whatsapp_chats').update({ remote_jid: jid, last_message: { text: txtShort, at: new Date().toISOString() }, last_message_at: new Date().toISOString(), contact_name: exCh.contact_name || dn }).eq('id', exCh.id)
-            const { data: dup } = await supabase.from('whatsapp_messages').select('id').eq('chat_id', exCh.id).eq('text', txt.substring(0, 100)).gte('created_at', new Date(Date.now() - 600000).toISOString()).limit(1)
+            await supabase.from('whatsapp_chats').update({ remote_jid: jid, last_message: { text: txtShort, at: new Date().toISOString() }, last_message_at: new Date().toISOString(), contact_name: fromMeChat.contact_name || dn }).eq('id', fromMeChat.id)
+            const { data: dup } = await supabase.from('whatsapp_messages').select('id').eq('chat_id', fromMeChat.id).eq('text', txt.substring(0, 100)).gte('created_at', new Date(Date.now() - 600000).toISOString()).limit(1)
             if (!dup?.length) {
-              await supabase.from('whatsapp_messages').insert({ chat_id: exCh.id, session_id: sessionId, text: txt, direction: 'outgoing', created_at: new Date(msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()).toISOString() })
-              trimMessages(exCh.id); msgProcessed++
+              await supabase.from('whatsapp_messages').insert({ chat_id: fromMeChat.id, session_id: sessionId, text: txt, direction: 'outgoing', created_at: new Date(msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()).toISOString() })
+              trimMessages(fromMeChat.id); msgProcessed++
             }
+            if (fromMeChat.contact_id) await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', fromMeChat.contact_id)
+            continue
           }
-          continue
         }
         // Only for incoming messages: find or create contact
         let contactId = null; const exC = await findContactByPhone(phone, companyId)
@@ -938,6 +938,8 @@ const server = http.createServer(async (req, res) => {
               if (sent) {
                 await supabase.from('whatsapp_messages').update({ direction: 'outgoing' }).eq('id', inserted[0].id)
                 await supabase.from('whatsapp_chats').update({ last_message: { text: d.text.substring(0, 200), at: new Date().toISOString() }, last_message_at: new Date().toISOString() }).eq('id', chatId)
+                // Update last_contacted_at on the contact
+                if (chatRow[0].contact_id) await supabase.from('contacts').update({ last_contacted_at: new Date().toISOString() }).eq('id', chatRow[0].contact_id)
               }
             }
           } catch (e) {}
@@ -2226,11 +2228,19 @@ const server = http.createServer(async (req, res) => {
             if (!phoneNum) continue
             const jid = '55' + phoneNum + '@s.whatsapp.net'
             let chatId = null
-            const exCh = await findChat(jid, sessionId, companyId)
-            if (exCh) { chatId = exCh.id } else {
-              const p = { remote_jid: jid, contact_name: row.name || phoneNum, session_id: sessionId }; if (companyId) p.company_id = companyId
-              const r = await supabase.from('whatsapp_chats').insert(p).select().single()
-              if (r.data) chatId = r.data.id
+            // Try to find existing chat by contact first
+            const { data: contactMatch } = await supabase.from('contacts').select('id').eq('company_id', companyId).eq('phone', phoneNum).limit(1)
+            if (contactMatch?.length) {
+              const { data: existingChat } = await supabase.from('whatsapp_chats').select('id').eq('contact_id', contactMatch[0].id).limit(1)
+              if (existingChat?.length) chatId = existingChat[0].id
+            }
+            if (!chatId) {
+              const exCh = await findChat(jid, sessionId, companyId)
+              if (exCh) { chatId = exCh.id } else {
+                const p = { remote_jid: jid, contact_name: row.name || phoneNum, session_id: sessionId }; if (companyId) p.company_id = companyId
+                const r = await supabase.from('whatsapp_chats').insert(p).select().single()
+                if (r.data) chatId = r.data.id
+              }
             }
             if (chatId) {
               const mp2 = { chat_id: chatId, session_id: sessionId, text: personalized, direction: 'sent', message_type: mediaUrl && messageType === 'image' ? 'image' : mediaUrl && messageType === 'audio' ? 'audio' : 'text', created_at: new Date().toISOString() }
