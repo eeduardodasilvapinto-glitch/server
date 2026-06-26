@@ -10519,6 +10519,7 @@
                         '</div>';
                 }).join('') +
                     '<button class="kanban-add-col" onclick="addKanbanColumn()">+ Nova Coluna</button>';
+            }
 
             function tagClass(colId) {
                 if (colId && colId.includes('1')) return 'ideo';
@@ -15977,7 +15978,6 @@
                 }).catch(function (e) {
                     showToast('Erro na operacao.');
                 });
-            }
             }
 
             function empDelete(id) {
