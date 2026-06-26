@@ -8458,27 +8458,28 @@
                     <div class="crm-modal-box">
                         <h3><i class="fi fi-rr-link"></i> Webhook de Leads</h3>
                         <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px">
-                            Envie leads do seu formulário ou landing page para esta URL:
+                            Configure Google Ads e Meta Ads para enviar leads para esta URL:
                         </p>
                         <div class="uf-group">
-                            <label>URL do Webhook (Railway)</label>
-                            <input type="text" id="railwayWebhookUrl" readonly
-                                value="https://server-production-d7c0.up.railway.app/webhook-lead"
-                                onclick="navigator.clipboard.writeText(this.value);showToast('URL copiada!')" />
+                            <label>Webhook URL</label>
+                            <input type="text" id="webhookUrl" readonly
+                                value="crm-webhook (clique para copiar)"
+                                onclick="var real='https://dwkjynmelculfzumoreg.supabase.co/functions/v1/crm-webhook';navigator.clipboard.writeText(real).then(function(){showToast('URL copiada!')}).catch(function(){})" />
                         </div>
                         <div class="uf-group">
-                            <label>Código da Empresa</label>
-                            <input type="text" id="webhookCompanyCode" readonly
-                                value="carregando..."
-                                onclick="navigator.clipboard.writeText(this.value);showToast('Código copiado!')" />
+                            <label>Secret (header: <code>x-crm-secret</code>)</label>
+                            <input type="password" id="webhookSecret" readonly value="16A17B32C45D"
+                                onclick="this.type='text';this.select();navigator.clipboard.writeText(this.value);showToast('Secret copiado!');setTimeout(function(){document.getElementById('webhookSecret').type='password'},3000)" />
+                                onclick="this.type='text';this.select();navigator.clipboard.writeText(this.value);showToast('Secret copiado!');setTimeout(function(){document.getElementById('webhookSecret').type='password'},3000)" />
                         </div>
                         <div class="uf-group">
-                            <label>Formato do JSON (enviar via POST)</label>
-                            <textarea readonly id="webhookJsonExample" style="font-size:0.7rem;font-family:monospace;min-height:140px">{
-        "company_code": "SEU_CODIGO_AQUI",
+                            <label>Formato do JSON</label>
+                            <textarea readonly style="font-size:0.7rem;font-family:monospace;min-height:120px">{
         "name": "Nome do Lead",
-        "phone": "51999999999",
+        "phone": "(11) 99999-9999",
         "email": "lead@email.com",
+        "project_value": 5000.00,
+        "description": "Descrição do projeto",
         "source": "google",
         "campaign": "Nome da Campanha"
     }</textarea>
@@ -12123,7 +12124,7 @@
                         tbody.appendChild(row);
                     });
                 }).catch(function (e) {
-                    showToast('Erro na operacao.');
+                    showUserStatus('Erro ao carregar usuarios.', 'err');
                 });
             }
 
@@ -12371,9 +12372,9 @@
                 }
             }
             function closeChatConfig() {
-                var el = document.getElementById('chatConfigOverlay');
+                var el = document.getElementById('chatConfigOverlay'); if (!el) return;
+                el.style.display = 'none';
                 el.classList.remove('open');
-                el.style.display = '';
                 if (_lastTab) switchTab(_lastTab);
             }
 
@@ -14291,27 +14292,6 @@
 
             function openWebhookInfo() {
                 document.getElementById('webhookModal').classList.add('open');
-                var sid = null;
-                try { sid = window.VeltrisWPP && window.VeltrisWPP.getServerSessionId(); } catch (e) {}
-                if (sid) {
-                    fetch('https://server-production-d7c0.up.railway.app/get-webhook-code', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ sessionId: sid })
-                    }).then(function(r){ return r.json() }).then(function(d){
-                        if (d.company_code) {
-                            document.getElementById('webhookCompanyCode').value = d.company_code;
-                            document.getElementById('webhookJsonExample').value = JSON.stringify({
-                                company_code: d.company_code,
-                                name: 'Nome do Lead',
-                                phone: '51999999999',
-                                email: 'lead@email.com',
-                                source: 'google',
-                                campaign: 'Nome da Campanha'
-                            }, null, 2);
-                        }
-                    }).catch(function(){})
-                }
             }
 
             // ── CRM Bulk Edit ──
@@ -15738,6 +15718,7 @@
             };
             var _aiTabs = { dashboard: 1, conteudos: 1, financeiro: 1, crm: 1, metricas: 1 };
 
+            // ── Permission tree (parent → children hierarchy) ──
             var PERM_TREE = {
                 wpp: { label: 'WhatsApp', children: ['wpp_chats','wpp_clientes','wpp_agenda','wpp_metricas','wpp_disparos','wpp_tags'] },
                 ia: { label: 'IA', children: ['ia_chat'] },
@@ -15758,7 +15739,9 @@
                     if (!node.children) return;
                     var p = perms[key] || {};
                     node.children.forEach(function(childKey) {
-                        if (perms[childKey] === undefined) perms[childKey] = { access: p.access !== false };
+                        if (perms[childKey] === undefined) {
+                            perms[childKey] = { access: p.access !== false };
+                        }
                     });
                 });
                 return perms;
@@ -15776,11 +15759,20 @@
                 });
                 return perms;
             }
+            function hasWppSubAccess(subtab) {
+                if (typeof _companyMode === 'undefined' || !_companyMode) return true;
+                var perms = _companyMode.permissions || {};
+                var wpp = perms.wpp || {};
+                if (wpp.access === false) return false;
+                return perms['wpp_' + subtab] && perms['wpp_' + subtab].access !== false;
+            }
 
             function empDefaultPerms() {
                 var o = {};
                 Object.keys(_tabLabels).forEach(function (k) { o[k] = { access: k !== 'empresas' }; });
+                // configuracoes and usuarios now enabled by default for all companies
                 o.ia.chat = true;
+                // Add child permissions from PERM_TREE
                 PERM_TREE_KEYS.forEach(function(key) {
                     var node = PERM_TREE[key];
                     if (!node.children) return;
@@ -15811,6 +15803,7 @@
                 var overlay = document.getElementById('empFormOverlay');
                 var adminFields = document.getElementById('empFormAdminFields');
                 if (!id) {
+                    // Restore original admin fields HTML for create mode
                     if (!window._empAdminFieldsOriginal) window._empAdminFieldsOriginal = document.getElementById('empFormAdminFields').innerHTML;
                     document.getElementById('empFormAdminFields').innerHTML = window._empAdminFieldsOriginal;
                     document.getElementById('empFormTitle').textContent = 'Nova Empresa';
@@ -15887,7 +15880,7 @@
                         node.children.forEach(function(childKey) {
                             var cp = perms[childKey] || {};
                             html += '<div class="emp-perm-row emp-perm-child">' +
-                                '<span class="perm-label" style="opacity:0.7;font-size:0.78rem">' + childKey.replace(/^wpp_/,'').replace(/_/g,' ') + '</span>' +
+                                '<span class="perm-label" style="opacity:0.7;font-size:0.78rem">' + (PERM_TREE[childKey] ? PERM_TREE[childKey].label : (childKey.replace('wpp_','').replace('_',' '))) + '</span>' +
                                 '<div class="perm-toggles">' +
                                 '<label><input type="checkbox" data-perm="' + childKey + '" data-type="access" ' + (cp.access ? 'checked' : '') + ' ' + (p.access === false ? 'disabled' : '') + ' onchange="toggleAccessPerm(this,\'' + childKey + '\')"> Acesso</label>' +
                                 '</div></div>';
@@ -15902,11 +15895,13 @@
                 var row = cb.closest('.emp-perm-row');
                 if (!row) return;
                 var checked = cb.checked;
+                // Handle AI sub-permission for parent rows
                 var aiCb = row.querySelector('input[data-type="ai"]');
                 if (aiCb) {
                     if (!checked) { aiCb.checked = false; aiCb.disabled = true; }
                     else { aiCb.disabled = false; }
                 }
+                // Handle child permissions propagation (parent → children)
                 var group = cb.closest('.emp-perm-group');
                 if (group && group.querySelector('.emp-perm-child')) {
                     var children = group.querySelectorAll('.emp-perm-child input[data-type="access"]');
@@ -15966,6 +15961,14 @@
                     data.adminPassword = adminPass;
                     promise = api.companyCreate(data);
                 }
+                promise.then(function () {
+                    empCloseForm();
+                    empRender();
+                    showToast('Empresa salva!');
+                }).catch(function (e) {
+                    showToast('Erro na operacao.');
+                });
+            }
                 promise.then(function () {
                     empCloseForm();
                     empRender();
@@ -16152,6 +16155,7 @@
                 document.getElementById('usrFormTitle').textContent = usr ? 'Editar Usuário' : 'Novo Usuário';
                 document.getElementById('usrFormName').value = usr ? usr.name : '';
                 document.getElementById('usrFormPass').value = '';
+                // Restrict admin password change to Admin Master only
                 if (usr && usr.role === 'admin') {
                     var currentUsrId = (api.companyGetSession && api.companyGetSession()) ? api.companyGetSession().user.id : null;
                     var isSelf = currentUsrId === usr.id;
@@ -16186,7 +16190,7 @@
                 var savedPerms = usr ? (usr.permissions || {}) : {};
                 var perms = {};
                 Object.keys(_tabLabels).forEach(function (k) {
-                    if (k === 'empresas' || k === 'usuarios' || k === 'configuracoes') return;
+                    if (k === 'empresas') return;
                     var defaults = { access: true, ai: true };
                     if (k === 'ia') defaults.chat = true;
                     perms[k] = Object.assign({}, defaults, savedPerms[k] || {});
@@ -16226,6 +16230,7 @@
                         promise = api.companyCreateUser(_companyMode.id, name, pass, role, sector, perms);
                     }
                     promise.then(function (result) {
+                        // Also encrypt password on Railway for view-password
                         if (pass) {
                             var newUserId = result?.id || (editId || '');
                             if (newUserId) {
@@ -16311,6 +16316,7 @@
                     render();
                     try { renderFinanceCharts(); } catch (e) { }
                     btn.disabled = false; btn.textContent = 'Entrar';
+                    // Check if user must change password
                     try {
                         var resp = await fetch('https://server-production-d7c0.up.railway.app/check-must-change?userId=' + encodeURIComponent(result.user.id))
                         if (resp.ok) {
@@ -16392,18 +16398,9 @@
                     var key = tab.dataset.tab;
                     if (!key) return;
                     if (isGlobalAdmin) { tab.style.display = ''; return; }
-                    if (key === 'empresas') {
-                        tab.style.display = 'none';
-                        return;
-                    }
-                    if (key === 'usuarios') {
-                        tab.style.display = '';
-                        return;
-                    }
-                    if (key === 'configuracoes') {
-                        tab.style.display = 'none';
-                        return;
-                    }
+                    if (key === 'empresas') { tab.style.display = 'none'; return; }
+                    if (key === 'usuarios') { tab.style.display = ''; return; }
+                    if (key === 'configuracoes') { tab.style.display = 'none'; return; }
                     if (isCompany) {
                         var p = perms[key] || {};
                         tab.style.display = p.access ? '' : 'none';
@@ -16411,6 +16408,7 @@
                         tab.style.display = '';
                     }
                 });
+                // sidebar settings button still only for admin master
                 document.getElementById('sidebarSettingsBtn').style.display = isGlobalAdmin ? '' : 'none';
                 if (!isCompany && typeof api !== 'undefined') {
                     document.getElementById('sidebarSettingsBtn').style.display = api.isAdmin() ? '' : 'none';
@@ -16483,6 +16481,7 @@
                     _companyMode.description = desc;
                     try { localStorage.setItem('veltris_company_desc_' + _companyMode.id, JSON.stringify({ sector: sector, description: desc })); } catch (e) {}
                     api.companyUpdate(_companyMode.id, { description_sector: sector, description: desc }).catch(function () {});
+                    // Mark completed on server
                     fetch(_wppServerUrl + '/company-desc-status', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ companyId: _companyMode.id, action: 'save', sector: sector, description: desc })
@@ -16541,6 +16540,7 @@
                 if (!isCompanyMode() || !_companyMode) return;
                 var hasDesc = _companyMode.description || _companyMode.descriptionSector;
                 if (hasDesc) return;
+                // Check server-side if company already completed/skipped this
                 fetch(_wppServerUrl + '/company-desc-status?companyId=' + encodeURIComponent(_companyMode.id))
                 .then(function(r){ return r.json() })
                 .then(function(d){
