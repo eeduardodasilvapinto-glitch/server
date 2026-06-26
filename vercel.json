@@ -4,5 +4,6 @@
       "source": "/api/:path*",
       "destination": "https://dwkjynmelculfzumoreg.supabase.co/functions/v1/:path*"
     }
-  ]
+  ],
+  "github": { "silent": false }
 }
